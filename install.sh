@@ -11,7 +11,8 @@
 #
 # Runs as you; uses sudo only for packages, lingering and the firewall. Nothing stock is
 # edited: no files in /usr/share/omarchy, ~/.config/hypr, ~/.config/omarchy or
-# /etc/sddm.conf.d are changed. Safe to re-run.
+# /etc/sddm.conf.d are changed. The one exception is the Station plugin, if installed:
+# patched so it stays out of the remote session (see 2.7b). Safe to re-run.
 set -euo pipefail
 
 KIT=$(cd "$(dirname "$0")" && pwd)
@@ -311,6 +312,26 @@ else
     sudo ufw allow from "$LAN" to any port 3389 proto tcp comment "$UFW_COMMENT" >/dev/null
     ok "RDP (3389/tcp) allowed from $LAN"
   fi
+fi
+
+# --- 2.7b Station ----------------------------------------------------------------------------
+# The remote session runs its own Omarchy shell, which loads every plugin, Station included.
+# Both Stations share ~/.config/omarchy/station and ~/.local/state/omarchy/station, so the
+# remote one (one headless display) kept rewriting the desk's workspace map, and every bar
+# reload shuffled the desk's windows across its monitors. patches/station-remote-guard.patch
+# makes Station inert and read-only in a headless session. A Station update drops it; re-run
+# this (Repair) afterwards.
+section "Station"
+station=$HOME/.config/omarchy/plugins/yakumy.station
+if [[ ! -f $station/Service.qml ]]; then
+  skip "Station not installed"
+elif grep -q 'remoteSession' "$station/Service.qml"; then
+  skip "Station already stays out of the remote session"
+elif patch -d "$station" -p1 --dry-run --silent < "$KIT/patches/station-remote-guard.patch" >/dev/null 2>&1; then
+  patch -d "$station" -p1 --silent < "$KIT/patches/station-remote-guard.patch"
+  ok "Station patched to stay out of the remote session (restart the shell: omarchy restart shell)"
+else
+  warn "couldn't patch Station (it changed upstream): the remote session may shuffle the desk's windows (see README.md)"
 fi
 
 # --- 2.8 warn-only checks --------------------------------------------------------------------

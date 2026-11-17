@@ -1,0 +1,79 @@
+diff --git i/Service.qml w/Service.qml
+index 97a5665..81947bf 100644
+--- i/Service.qml
++++ w/Service.qml
+@@ -46,6 +46,10 @@ Item {
+   // Hyprland's instance signature names this login. The one Station last started
+   // under tells a fresh login from a shell restart.
+   readonly property string hyprSession: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || ""
++  // A headless Hyprland (an RDP remote session such as omarchy-rdp's) shares this
++  // user's config and state files but has none of the desk's displays. Station
++  // stays inert there, so it never rewrites the desk's workspace map or settings.
++  readonly property bool remoteSession: (Quickshell.env("AQ_HEADLESS_RENDER_NODE") || "") !== ""
+   property string savedSession: ""
+   property bool sessionLoaded: false
+   property int configGeneration: 0
+@@ -115,6 +119,7 @@ Item {
+ 
+   Platform.SettingsStore {
+     id: store
++    readOnly: root.remoteSession
+     loaded: function() { root.maybeStart() }
+     directoriesReady: function() {
+       workspace.reload()
+@@ -601,7 +606,7 @@ Item {
+   }
+ 
+   function maybeStart() {
+-    if (started || !store.dirsReady || !store.configLoaded || !store.stateLoaded
++    if (remoteSession || started || !store.dirsReady || !store.configLoaded || !store.stateLoaded
+         || !displayController.previewLoaded || !workspace.mappingLoaded || !displayController.monitorsLoaded
+         || !sessionLoaded) return
+     if (store.fresh && !workspaceRulesRead) {
+@@ -695,6 +700,7 @@ Item {
+   }
+ 
+   function handleEvent(event) {
++    if (remoteSession) return
+     var name = String(event && event.name || "").toLowerCase()
+     if (!name) return
+     // These events are part of our display transaction. Its completion takes
+@@ -782,14 +788,14 @@ Item {
+   function acknowledgePanelEvacuation(serial, screenName) { return panel.acknowledgePanelEvacuation(serial, screenName) }
+ 
+   Component.onCompleted: {
+-    Qt.callLater(barSettings.reconcileActiveBarLayout)
++    if (!remoteSession) Qt.callLater(barSettings.reconcileActiveBarLayout)
+     store.prepare()
+     barBridge = BarBridge.publish(function() { return ServiceContract.snapshot(root) }, ServiceContract.actions(root), function() { return ServiceContract.station(root) })
+   }
+ 
+   Component.onDestruction: {
+     BarBridge.clear(barBridge)
+-    Quickshell.execDetached(Recovery.cleanupCommand(stateDir, monitorsPath, persisted.stockLease, persisted.displayLease, workspaceAuthorityPath, colorTogglePath))
++    if (!remoteSession) Quickshell.execDetached(Recovery.cleanupCommand(stateDir, monitorsPath, persisted.stockLease, persisted.displayLease, workspaceAuthorityPath, colorTogglePath))
+   }
+ 
+   // Connector -> block, and every block Omarchy has handed out, as its bar reads it.
+diff --git i/lib/platform/SettingsStore.qml w/lib/platform/SettingsStore.qml
+index 6e21f42..c1a4704 100644
+--- i/lib/platform/SettingsStore.qml
++++ w/lib/platform/SettingsStore.qml
+@@ -35,12 +35,15 @@ Item {
+ 
+   function prepare() { ensureDirs.running = true }
+ 
++  // True in a remote (headless) session: read the desk's files, never write them.
++  property bool readOnly: false
++
+   function saveConfig() {
+-    if (configLoaded && dirsReady) configFile.setText(JSON.stringify(config, null, 2) + "\n")
++    if (!readOnly && configLoaded && dirsReady) configFile.setText(JSON.stringify(config, null, 2) + "\n")
+   }
+ 
+   function saveState() {
+-    if (stateLoaded && dirsReady) stateFile.setText(JSON.stringify(persisted, null, 2) + "\n")
++    if (!readOnly && stateLoaded && dirsReady) stateFile.setText(JSON.stringify(persisted, null, 2) + "\n")
+   }
+ 
+   FileView {

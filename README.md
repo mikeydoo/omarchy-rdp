@@ -136,6 +136,12 @@ Replaced files are backed up to `~/.local/state/omarchy-rdp/backup-<date>/`.
   reach port 3389 can disconnect you. Keep it to your LAN: with UFW on, the installer
   allows 3389 only from your LAN; with UFW off it's open on every network the machine is on.
 - Apps in the remote session don't get their own systemd scopes.
+- The remote session's shell loads every Omarchy plugin, and plugins share their config and
+  state files with the desk. A plugin that manages displays or workspaces can therefore fight
+  the desk. The [Station](https://github.com/Yakumy/Station) plugin did: its remote copy
+  rewrote the desk's workspace map, so every bar reload shuffled the desk's windows across
+  monitors. The installer patches Station (`patches/station-remote-guard.patch`) to stay
+  inert and read-only when Hyprland is headless.
 
 ## Troubleshooting
 
@@ -143,6 +149,7 @@ Replaced files are backed up to `~/.local/state/omarchy-rdp/backup-<date>/`.
 |---|---|
 | RDP connects, then drops at once | `journalctl --user -u rdp-gate -u hypr-rdp-remote -u hyprland-remote -n 50` |
 | Panel shows the patch needs porting | aquamarine changed too much for the patch: port `patches/aquamarine-headless-render-node.patch`, then **Repair** |
+| Desk windows jump between monitors when the bar reloads | A Station update dropped the patch: **Repair**, then `omarchy restart shell` |
 | Desk login: uwsm "A compositor or graphical-session* target is already active!" | `systemctl --user stop graphical-session.target`, log in again |
 
 ## Uninstall

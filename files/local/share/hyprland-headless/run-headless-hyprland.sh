@@ -34,6 +34,8 @@ RENDER_NODE=${AQ_HEADLESS_RENDER_NODE:-$(ls /dev/dri/renderD* 2>/dev/null | head
 #   Hyprland then crashes (CBackend::create() failed) and SDDM falls back to its greeter.
 # - AQ_HEADLESS_RENDER_NODE: enables the patch; hyprland-remote.lua also uses it to
 #   recognise the remote session.
+# - start-hyprland: Hyprland's own launcher (a watchdog); started directly, Hyprland shows
+#   "Hyprland was started without start-hyprland".
 # - dbus-run-session: the remote session gets its own session bus, so single-instance apps
 #   (GNOME apps, browsers, ...) and notifications/MPRIS are per session.
 exec env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY \
@@ -44,4 +46,4 @@ exec env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY \
     XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-Hyprland}" \
     XDG_SESSION_TYPE=wayland LIBSEAT_BACKEND=none \
     AQ_HEADLESS_RENDER_NODE="$RENDER_NODE" LD_LIBRARY_PATH="$HERE/lib" \
-    dbus-run-session -- Hyprland --config "$CONFIG"
+    dbus-run-session -- start-hyprland -- --config "$CONFIG"

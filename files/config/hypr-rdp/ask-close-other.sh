@@ -47,7 +47,7 @@ for i in $(seq 60); do
 done
 sleep 1   # let the shell's toast deck come up too
 
-WHY="Both sessions are you, the same user, so apps that allow one copy per user (browsers on the same profile, chat and music apps, password managers) can only run in one of them. Any still open there would bring their windows up $WHERE instead of here, or say they're already running. Logging it out closes its apps, so they open where you are."
+WHY="Both sessions are you, the same user. Some apps allow only one copy per user (browsers on the same profile, chat and music apps, password managers), so they can only run in one of them. Any still open there would bring their windows up $WHERE instead of here, or say they're already running. Logging it out closes its apps, so they open where you are."
 
 CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
     -A logout="Log it out" -A keep="Keep it" -A why="Why?" "$TITLE")

@@ -37,6 +37,16 @@ if [ "${2:-}" = --now ]; then
 else
 [ -n "$BUS" ] || exit 1
 
+# A freshly started session (the gate starts the remote one on the RDP login that asks
+# this) takes a few seconds to bring up its shell, which shows notifications: wait for it.
+for i in $(seq 60); do
+    dbus-send --bus="$BUS" --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+        org.freedesktop.DBus.NameHasOwner string:org.freedesktop.Notifications 2>/dev/null \
+        | grep -q 'boolean true' && break
+    sleep 1
+done
+sleep 1   # let the shell's toast deck come up too
+
 CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
     -A logout="Log it out" -A keep="Keep it" "$TITLE" "$BODY")
 fi

@@ -54,5 +54,5 @@
   "when.today": "Today %1",
   "when.yesterday": "Yesterday %1",
   "note.title": "Why log out the other session?",
-  "note.body": "Both sessions are you, the same user. Some apps only allow one copy per user (browsers on the same profile, chat and music apps, password managers), so they can only run in one of them. If one is still open in the other session, opening it here may bring up its window over there instead, or say it's already running. Logging out the session you're not using closes its apps, so they open where you are."
+  "note.body": "Both sessions are you, the same user. Some apps only allow one copy per user (browsers on the same profile, chat and music apps, password managers), so they can only run in one of them. Any still open in the other session would bring their windows up there instead of here, or say they're already running. Logging it out closes its apps, so they open where you are."
 }

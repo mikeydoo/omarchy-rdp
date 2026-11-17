@@ -41,12 +41,39 @@ Credential Manager. The certificate is self-signed (in `~/.config/hypr-rdp`).
 | Reboot | The remote session and RDP start at boot (lingering); the desk logs in as usual. |
 
 Windows can't move between the two sessions (a Wayland window belongs to one compositor).
+If you want the same windows at the desk and over RDP, use shared mode.
+
+## Shared mode: one session, at the desk or over RDP
+
+The panel's **Share the desk session over RDP** switch (or `omarchy-rdp-ctl mode shared`)
+swaps the separate headless session for the desk session itself: `hypr-rdp` runs in the
+desk session and shows its monitor over RDP, so you pick up the same windows wherever you
+are. `omarchy-rdp-ctl mode headless` switches back.
+
+| You... | Result |
+|---|---|
+| Log in over RDP | You see the desk session as it is (its lock screen, if it's locked). |
+| Disconnect | The desk session locks. |
+| Unlock or use the desk | Nothing is cut: it's the same session. |
+| Connect a second RDP client | It takes over; the first is cut. |
+
+What's different from the headless mode:
+
+- RDP shows the desk monitor at its own resolution, scaled by your RDP client. It doesn't
+  resize to the client, so workspaces and Super+number stay as they are.
+- The console shows the same screen while you're connected, and its keyboard and mouse
+  still work. Use it where nobody else is at the machine.
+- The desk must be logged in (autologin covers boot). If it's logged out, RDP waits for
+  the next desk login.
+- No patched libaquamarine, second Hyprland or log-out questions are involved.
 
 ## The panel
 
 - **State icon:** dim = not set up / RDP off, normal = ready or connected, red = needs
   attention.
 - **Accept RDP connections** switch: starts or stops the listener on port 3389.
+- **Share the desk session over RDP** switch, under Sessions: shared mode (above). Turning
+  it on closes the headless session (two clicks, when it's running).
 - **Sessions:** the desk and the remote session, which one you're in, and whether it's
   in use, locked, connected or waiting for RDP. **Log out** (two clicks) the other one:
   the remote session from the desk, the desk from the remote session. On the desk also

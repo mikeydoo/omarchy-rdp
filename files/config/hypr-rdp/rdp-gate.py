@@ -11,6 +11,9 @@
 - Omarchy's `omarchy restart shell` (after updates, font and language changes) stops the
   Omarchy shell in every session but starts it again only in its own. While both sessions
   run, a session left without its shell for SHELL_GRACE seconds gets it back.
+- Shared mode (~/.config/hypr-rdp/mode says "shared"): hypr-rdp runs in the desk session
+  itself (hypr-rdp-shared.service), so there's no remote session to start or ask about,
+  and unlocking the desk (usually over RDP, in this mode) cuts nothing. Newest still wins.
 - SIGUSR1 cuts the current connection (the plugin's Disconnect button).
 - The connected client's address is kept in $XDG_RUNTIME_DIR/rdp-sessions/client for the
   plugin's status.
@@ -31,6 +34,15 @@ SHELL_CONFIG = os.path.join(os.environ.get("OMARCHY_PATH", "/usr/share/omarchy")
 MARKERS = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "rdp-sessions")
 CLIENT_FILE = os.path.join(MARKERS, "client")
 HERE = os.path.expanduser("~/.config/hypr-rdp")
+MODE_FILE = os.path.join(HERE, "mode")
+
+
+def shared_mode() -> bool:
+    try:
+        with open(MODE_FILE) as f:
+            return f.read().strip() == "shared"
+    except OSError:
+        return False
 ASK = os.path.join(HERE, "ask-close-other.sh")
 HYPR_SESSION = os.path.join(HERE, "hypr-session.sh")
 LOGINS = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
@@ -127,9 +139,9 @@ async def watch_desk() -> None:
             # Edge, not level: only the moment of unlocking takes over. A remote login made
             # while the desk was unlocked must survive until its hook has locked the desk,
             # and the desk's auto-login at boot (first state seen) cuts nobody.
-            if in_use and last is not None:
+            if in_use and last is not None and not shared_mode():
                 cut_all("desk unlocked")
-            if in_use:
+            if in_use and not shared_mode():
                 desk_unlocked()
             last = in_use
         await asyncio.sleep(POLL_SECONDS)
@@ -199,7 +211,7 @@ async def backend_connect():
         return await asyncio.open_connection(*BACKEND)
     except OSError:
         pass
-    if (await run("systemctl", "--user", "is-active", REMOTE_UNIT))[1] != "active":
+    if not shared_mode() and (await run("systemctl", "--user", "is-active", REMOTE_UNIT))[1] != "active":
         log("remote session not running: starting a fresh one")
         await run("systemctl", "--user", "start", REMOTE_UNIT)
     deadline = asyncio.get_running_loop().time() + START_TIMEOUT

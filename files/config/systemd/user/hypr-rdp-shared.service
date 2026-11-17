@@ -1,0 +1,12 @@
+[Unit]
+Description=hypr-rdp sharing the desk session (Omarchy RDP shared mode; localhost:3390, behind rdp-gate)
+
+[Service]
+Type=simple
+Environment=OMARCHY_PATH=/usr/share/omarchy
+ExecStart=%h/.config/hypr-rdp/hypr-rdp-shared.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

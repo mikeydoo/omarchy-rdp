@@ -75,7 +75,7 @@ done
 
 # Every service in files/, in start order.
 UNITS=()
-for u in hyprland-remote.service hypr-rdp-remote.service rdp-gate.service; do
+for u in hyprland-remote.service hypr-rdp-remote.service hypr-rdp-shared.service rdp-gate.service; do
   [[ -f $KIT/files/config/systemd/user/$u ]] && UNITS+=("$u")
 done
 
@@ -238,7 +238,7 @@ units_changed=0
 while IFS= read -r -d '' src; do
   rel=${src#"$KIT"/files/}
   dest=$HOME/.$rel
-  if [[ $rel == config/hypr-rdp/config.toml ]]; then
+  if [[ $rel == config/hypr-rdp/config.toml || $rel == config/hypr-rdp/config-shared.toml ]]; then
     # yours to edit (fps, codec, ...): only installed when missing
     [[ -f $dest ]] && continue
     mode=600
@@ -324,25 +324,42 @@ fi
 
 # --- 2.9 enable and start --------------------------------------------------------------------
 section "Services"
-for u in "${UNITS[@]}"; do
+# Which mode: ~/.config/hypr-rdp/mode says "shared" (RDP shows the desk session) or is
+# missing (a separate headless session). Switched with: omarchy-rdp-ctl mode shared|headless
+if [[ $(cat "$HOME/.config/hypr-rdp/mode" 2>/dev/null) == shared ]]; then
+  MODE_UNITS=(hypr-rdp-shared.service rdp-gate.service)
+  OFF_UNITS=(hyprland-remote.service hypr-rdp-remote.service)
+  info "mode: shared (RDP shows the desk session)"
+else
+  MODE_UNITS=(hyprland-remote.service hypr-rdp-remote.service rdp-gate.service)
+  OFF_UNITS=(hypr-rdp-shared.service)
+  info "mode: headless (a separate remote session)"
+fi
+for u in "${OFF_UNITS[@]}"; do
+  [[ -f $HOME/.config/systemd/user/$u ]] || continue
+  if systemctl --user is-enabled --quiet "$u" 2>/dev/null; then
+    systemctl --user disable --now --quiet "$u" && ok "disabled $u (not used in this mode)"
+  fi
+done
+for u in "${MODE_UNITS[@]}"; do
   if ! systemctl --user is-enabled --quiet "$u" 2>/dev/null; then
     systemctl --user enable --quiet "$u"
     ok "enabled $u"
   fi
 done
-if [[ $(cat "$RDP_LIB/AQUAMARINE_VERSION" 2>/dev/null) != "$aq_ver" ]]; then
+if [[ ${MODE_UNITS[0]} == hyprland-remote.service && $(cat "$RDP_LIB/AQUAMARINE_VERSION" 2>/dev/null) != "$aq_ver" ]]; then
   warn "not starting the remote session: patched libaquamarine is missing"
-elif systemctl --user is-active --quiet hyprland-remote.service &&
+elif systemctl --user is-active --quiet "${MODE_UNITS[0]}" &&
   systemctl --user is-active --quiet rdp-gate.service; then
-  skip "remote session and RDP gate already running"
+  skip "already running: ${MODE_UNITS[*]}"
   if ((files_changed)); then
     # not restarted here: you may be running this over RDP
-    info "restart them to use the new files (closes the remote session):"
-    info "  systemctl --user restart ${UNITS[*]}"
+    info "restart them to use the new files (in headless mode this closes the remote session):"
+    info "  systemctl --user restart ${MODE_UNITS[*]}"
   fi
 else
-  systemctl --user start "${UNITS[@]}"
-  ok "remote session and RDP gate started"
+  systemctl --user start "${MODE_UNITS[@]}"
+  ok "started ${MODE_UNITS[*]}"
 fi
 
 # --- 2.10 summary ----------------------------------------------------------------------------

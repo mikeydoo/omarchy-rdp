@@ -15,7 +15,7 @@ PATCH="$HERE/patches/aquamarine-headless-render-node.patch"
 DEST="$HERE/lib"
 
 for c in cmake make c++ curl tar patch pkg-config hyprwayland-scanner; do
-    command -v "$c" >/dev/null || { echo "missing build tool: $c (re-run hypr-rdp/install.sh)" >&2; exit 1; }
+    command -v "$c" >/dev/null || { echo "missing build tool: $c (run Repair in the Omarchy RDP panel (omarchy-rdp-ctl install))" >&2; exit 1; }
 done
 
 VERSION=$(pacman -Q aquamarine | awk '{print $2}' | sed 's/-.*//')
@@ -35,7 +35,7 @@ cd "aquamarine-$VERSION"
 if ! patch -p1 --dry-run < "$PATCH" >/dev/null; then
     echo "The patch does not apply to aquamarine $VERSION (written for 0.16.0, also applies to 0.15.1)." >&2
     echo "Port patches/aquamarine-headless-render-node.patch to src/backend/Headless.cpp" >&2
-    echo "and src/allocator/GBM.cpp, then re-run hypr-rdp/install.sh." >&2
+    echo "and src/allocator/GBM.cpp, then run Repair in the Omarchy RDP panel (omarchy-rdp-ctl install)." >&2
     exit 1
 fi
 patch -p1 < "$PATCH"

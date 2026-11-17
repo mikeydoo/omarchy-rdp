@@ -7,7 +7,7 @@
 #
 # If the patch stops applying after an aquamarine update, the failed version is written to
 # ./REBUILD_FAILED, the desk gets a notification, and later starts fail at once instead of
-# rebuilding again. Port the patch, then re-run hypr-rdp/install.sh (which clears it).
+# rebuilding again. Port the patch, then run Repair in the Omarchy RDP panel (omarchy-rdp-ctl install), which clears it.
 # A failed download is not recorded: the next start simply tries again.
 HERE=$(cd "$(dirname "$0")" && pwd)
 LIB=$HERE/lib
@@ -21,7 +21,7 @@ current() { cat "$LIB/AQUAMARINE_VERSION" 2>/dev/null; }
 
 if [ "$(cat "$MARK" 2>/dev/null)" = "$want" ]; then
     echo "patched libaquamarine didn't build for aquamarine $want earlier:" \
-         "port the patch, then re-run hypr-rdp/install.sh" >&2
+         "port the patch, then run Repair in the Omarchy RDP panel (omarchy-rdp-ctl install)" >&2
     exit 1
 fi
 
@@ -45,7 +45,7 @@ case $rc in
     echo "$want" > "$MARK"
     # The systemd user bus is the desk's (the remote session has its own, started later).
     notify-send -u critical "RDP remote session can't start" \
-        "The patched libaquamarine didn't build for aquamarine $want (journalctl --user -u hyprland-remote). Fix it (e.g. port the patch), then re-run hypr-rdp/install.sh." \
+        "The patched libaquamarine didn't build for aquamarine $want (journalctl --user -u hyprland-remote). Fix it (e.g. port the patch), then run Repair in the Omarchy RDP panel (omarchy-rdp-ctl install)." \
         2>/dev/null
     exit 1
     ;;

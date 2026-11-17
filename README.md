@@ -129,8 +129,12 @@ Replaced files are backed up to `~/.local/state/omarchy-rdp/backup-<date>/`.
 - Reboot and Shut Down in the remote session act on the whole machine.
 - Omarchy's idle settings (`shell.json`) apply to both sessions: a remote session left
   disconnected locks after your idle timeout, and the stay-awake toggle is shared.
-- The newest connection wins before authentication: a client with a wrong password still
-  cuts the current RDP session.
+- The newest connection wins before authentication: a client with a wrong password (or a
+  port scan) still cuts the current RDP session. hypr-rdp serves one connection at a time,
+  even mid-login, so the gate has to cut the old one to let a new one try. Nobody gets in
+  without your password (and 10 wrong ones lock logins for 2 minutes), but anyone who can
+  reach port 3389 can disconnect you. Keep it to your LAN: with UFW on, the installer
+  allows 3389 only from your LAN; with UFW off it's open on every network the machine is on.
 - Apps in the remote session don't get their own systemd scopes.
 
 ## Troubleshooting

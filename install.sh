@@ -293,7 +293,7 @@ fi
 # --- 2.7 firewall ----------------------------------------------------------------------------
 section "Firewall"
 if ! ufw_active; then
-  skip "UFW is not active: nothing to open"
+  warn "UFW is off: RDP (3389) is open on every network this machine is on (sudo ufw enable, then re-run this to allow it from your LAN only)"
 else
   if [[ -z $LAN ]]; then
     LAN=$(detect_lan) || die "couldn't work out this machine's LAN: pass --lan <CIDR>"

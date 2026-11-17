@@ -398,6 +398,57 @@ Panel {
             }
           }
 
+          // --- why log out the other session ---------------------------------------------
+          PanelSeparator {
+            visible: root.isSetUp
+            foreground: root.foreground
+          }
+
+          RowLayout {
+            visible: root.isSetUp
+            width: parent.width
+            spacing: Style.space(10)
+
+            Text {
+              textFormat: Text.PlainText
+              text: ""
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.icon
+              Layout.alignment: Qt.AlignTop
+              Layout.leftMargin: Style.space(10)
+              Layout.preferredWidth: Style.font.icon * 1.3
+              horizontalAlignment: Text.AlignHCenter
+            }
+
+            Column {
+              Layout.fillWidth: true
+              spacing: Style.space(4)
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: strings.t("note.title")
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                wrapMode: Text.WordWrap
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: strings.t("note.body")
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+                lineHeight: 1.15
+              }
+            }
+          }
+
           // --- footer: update / repair / uninstall, versions ------------------------------------
           PanelSeparator {
             visible: root.isSetUp && !root.inRemote

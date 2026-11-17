@@ -23,57 +23,50 @@ remote)
     systemctl --user is-active -q hyprland-remote.service || exit 0
     TITLE="RDP session is still logged in"
     SHOW_IN=desk
-    WHERE_SHORT="In the RDP session instead of here"
+    WHERE_SHORT="in the RDP session instead of here"
     ;;
 desk)
     S=$(desk_session); [ -n "$S" ] || exit 0
     P=$(remote_hypr_pid); [ -n "$P" ] || exit 1
     TITLE="Console session is still logged in"
     SHOW_IN=remote
-    WHERE_SHORT="On the console instead of here"
+    WHERE_SHORT="on the console instead of here"
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
 esac
 if [ "${2:-}" = --now ]; then
     CHOICE=logout
 else
-# Asked with Omarchy's own menu (omarchy-menu-select) in the session that took over: a
-# fixed box in the middle of the screen, unlike a notification. Dismissing it (Escape,
-# clicking outside) keeps the other session.
+# Asked by the Omarchy RDP plugin, in its bar panel in the session that took over: the
+# question with Log it out / Keep it / Why? (Why? shows the explanation). Closing the panel
+# keeps the other session.
 W=$("$HERE/hypr-session.sh" "$SHOW_IN" | awk '{print $2}')
 [ -n "$W" ] || exit 1
 export WAYLAND_DISPLAY="$W" OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 
 # A freshly started session (the gate starts the remote one on the RDP login that asks
-# this) takes a few seconds to bring up its shell, which shows the menu: wait for it.
+# this) takes a few seconds to bring up its shell and the plugin: wait for it.
 for i in $(seq 60); do
-    [ "$(omarchy-shell notifications ping 2>/dev/null)" = ok ] && break
+    [ "$(omarchy-shell omarchy-rdp refresh 2>/dev/null)" = ok ] && break
     sleep 1
 done
-sleep 1
 
-TAB=$(printf '\t')
-row() { printf '%s\t%s\t%s' "$1" "$2" "$3"; }   # glyph, label, caption
-LOGOUT=$(row "$(printf '\uf08b')" "Log it out" "Closes its windows, so apps open here")
-KEEP=$(row "$(printf '\uf00c')" "Keep it" "Leaves its windows open")
-WHYROW=$(row "$(printf '\uf059')" "Why?" "Some apps only allow one copy per user")
-ask() { omarchy-menu-select "$@" -- --width 560 2>/dev/null | cut -d"$TAB" -f1; }
-ask_wide() { omarchy-menu-select "$@" -- --width 900 2>/dev/null | cut -d"$TAB" -f1; }
-
-CHOICE=$(ask "$TITLE" "$LOGOUT" "$KEEP" "$WHYROW")
-# Why?: the explanation, then the same choice again (picking an explanation row shows it
-# again; dismissing the menu keeps the other session).
-while [ -n "$CHOICE" ] && [ "$CHOICE" != "Log it out" ] && [ "$CHOICE" != "Keep it" ]; do
-    CHOICE=$(ask_wide "Why log it out?" \
-        "$(row "$(printf '\uf007')" "Both sessions are you, the same user, and some apps only allow one copy per user" "Like browsers on the same profile, chat and music apps and password managers: one session at a time")" \
-        "$(row "$(printf '\uf2d0')" "Any still open there would open their windows there" "$WHERE_SHORT, or say they're already running")" \
-        "$LOGOUT" "$KEEP")
+WHY="Both sessions are you, the same user, and some apps only allow one copy per user, like browsers on the same profile, chat and music apps and password managers. Any still open there would open their windows $WHERE_SHORT, or say they're already running. Logging it out closes them, so they open where you are."
+ANS="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/rdp-sessions/answer-$$"
+mkdir -p "$(dirname "$ANS")"; rm -f "$ANS"
+omarchy-shell omarchy-rdp ask "$TITLE" "$WHY" "$ANS" >/dev/null 2>&1 || exit 1
+i=0
+while [ ! -e "$ANS" ]; do
+    sleep 0.5
+    i=$((i + 1))
+    # Every few seconds: still asking? (A shell restart in that session loses the question.)
+    if [ $((i % 10)) = 0 ] && [ "$(omarchy-shell omarchy-rdp pending 2>/dev/null)" != "$ANS" ]; then
+        [ -e "$ANS" ] || exit 0
+    fi
 done
-case "$CHOICE" in
-    "Log it out") CHOICE=logout ;;
-    *) CHOICE=keep ;;
-esac
+CHOICE=$(cat "$ANS"); rm -f "$ANS"
 fi
+
 
 if [ "$CHOICE" = logout ]; then
     case "$1" in

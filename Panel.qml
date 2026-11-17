@@ -45,6 +45,22 @@ Panel {
 
   // Two-step rows for anything that closes windows: the first click arms, the second
   // (within a few seconds) does it.
+  // A question from ask-close-other.sh ("log out the other session?"), shown in this panel
+  // in place of its usual content: {title, body, answerFile}. The answer ("logout" or
+  // "keep") is written to answerFile; closing the panel answers "keep".
+  property var question: null
+  readonly property bool asking: question !== null
+  property bool questionWhy: false
+
+  function answer(choice) {
+    if (!question) return
+    var file = String(question.answerFile)
+    question = null
+    Quickshell.execDetached(["sh", "-c", 'printf "%s" "$1" > "$2.tmp" && mv "$2.tmp" "$2"',
+      "sh", choice, file])
+    if (opened) close()
+  }
+
   // The "why log out" note: collapsed until clicked (kept while the shell runs).
   property bool noteOpen: false
 
@@ -120,9 +136,22 @@ Panel {
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }
     function refresh(): string { svc.refresh(); return "ok" }
+    // Used by ask-close-other.sh; see `question`.
+    function ask(title: string, body: string, answerFile: string): string {
+      if (root.question) root.answer("keep")
+      root.questionWhy = false
+      root.question = { title: title, body: body, answerFile: answerFile }
+      root.open()
+      return "ok"
+    }
+    // The answer file of the question showing now, or "" (lets the asker notice a lost one).
+    function pending(): string { return root.question ? String(root.question.answerFile) : "" }
+    // Show the explanation of the question showing now, as its Why? button does.
+    function why(): void { if (root.question) root.questionWhy = true }
   }
 
-  onOpenedChanged: if (opened) {
+  onOpenedChanged: if (!opened && question) answer("keep")
+  else if (opened) {
     armed = ""
     panelFlick.contentY = 0
     svc.refresh()
@@ -158,7 +187,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(600))
+    contentHeight: panel.fittedContentHeight(root.asking ? questionColumn.implicitHeight : column.implicitHeight, Style.space(600))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -174,15 +203,88 @@ Panel {
         id: panelFlick
         anchors.fill: parent
         contentWidth: width
-        contentHeight: column.implicitHeight
+        contentHeight: root.asking ? questionColumn.implicitHeight : column.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         interactive: contentHeight > height
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+        // --- a question from ask-close-other.sh -------------------------------------------
+        Column {
+          id: questionColumn
+          visible: root.asking
+          width: panelFlick.width
+          spacing: Style.space(12)
+
+          PanelHero {
+            width: parent.width
+            title: root.question ? String(root.question.title) : ""
+            meta: strings.t("title")
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            iconComponent: Component {
+              OpticalGlyph {
+                width: Style.font.display
+                height: Style.font.display
+                text: root.glyph
+                fontFamily: root.fontFamily
+                fontSize: Style.font.display
+                color: root.foreground
+              }
+            }
+          }
+
+          Text {
+            visible: root.questionWhy
+            textFormat: Text.PlainText
+            width: parent.width
+            text: root.question ? String(root.question.body) : ""
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            wrapMode: Text.WordWrap
+            lineHeight: 1.15
+          }
+
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(6)
+
+            Button {
+              Layout.fillWidth: true
+              text: strings.t("ask.logout")
+              iconText: "\uf08b"
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.answer("logout")
+            }
+            Button {
+              Layout.fillWidth: true
+              text: strings.t("ask.keep")
+              iconText: "\uf00c"
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.answer("keep")
+            }
+            Button {
+              visible: !root.questionWhy
+              Layout.fillWidth: true
+              text: strings.t("ask.why")
+              iconText: "\uf059"
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.questionWhy = true
+            }
+          }
+        }
+
         Column {
           id: column
+          visible: !root.asking
           width: panelFlick.width
           spacing: Style.space(12)
 

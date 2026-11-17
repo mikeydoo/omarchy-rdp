@@ -4,7 +4,7 @@
 The plugin's panel runs this for everything it shows and every button; it works the same
 from a shell.
 
-  omarchy-rdp-ctl status [--json]     state of the setup, the sessions and the checks
+  omarchy-rdp-ctl status [--json]     state of the setup, the sessions, recent logins, checks
   omarchy-rdp-ctl install [args]      run install.sh (set up / repair / update the files)
   omarchy-rdp-ctl uninstall [--yes]   run install.sh --uninstall
   omarchy-rdp-ctl update              git pull the plugin, then run install.sh
@@ -33,6 +33,10 @@ HEADLESS = os.path.join(HOME, ".local/share/hyprland-headless")
 CONF = os.path.join(HOME, ".config/hypr-rdp")
 UNITS = ["hyprland-remote.service", "hypr-rdp-remote.service", "rdp-gate.service"]
 HYPR_RDP_MIN = "0.1.8"
+# Login history, written by on-connect.sh (RDP logins, after authentication) and
+# rdp-gate.py (desk logins): "<epoch>\t<rdp|desk>\t<client address>" per line.
+LOGINS = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local/state"),
+                      "omarchy-rdp/logins.tsv")
 
 
 def run(*cmd, env=None, timeout=10):
@@ -94,6 +98,27 @@ def shell_locked(wayland_display):
     return {"true": True, "false": False}.get(out)
 
 
+def desk_session_id():
+    """Our seat0 (console) session's id, or ""."""
+    user = os.environ.get("USER", "")
+    for line in run("loginctl", "list-sessions", "--no-legend")[1].splitlines():
+        f = line.split()
+        if len(f) >= 4 and f[2] == user and f[3] == "seat0":
+            return f[0]
+    return ""
+
+
+def recent_logins(n=5):
+    """The last n logins, newest first: [{"time", "kind", "from"}]."""
+    out = []
+    for line in read(LOGINS).splitlines():
+        f = line.split("\t")
+        if len(f) >= 2 and f[0].isdigit() and f[1] in ("rdp", "desk"):
+            out.append({"time": int(f[0]), "kind": f[1], "from": f[2] if len(f) > 2 else ""})
+    out.sort(key=lambda e: e["time"], reverse=True)
+    return out[:n]
+
+
 def lan_address():
     out = run("ip", "-4", "route", "get", "1.1.1.1")[1]
     m = re.search(r"\bsrc (\S+)", out)
@@ -132,6 +157,13 @@ def status():
     rdp_enabled = is_enabled("rdp-gate.service")
     rdp_active = is_active("rdp-gate.service")
     client = read(os.path.join(MARKERS, "client")) if rdp_active else ""
+
+    desk_active = bool(desk_session_id())
+    desk_locked = None
+    if desk_active:
+        desk = hypr_session("desk")
+        if desk:
+            desk_locked = shell_locked(desk[1])
 
     remote_locked = None
     if remote_active:
@@ -216,6 +248,8 @@ def status():
         "client": client,
         "address": lan_address(),
         "user": os.environ.get("USER", ""),
+        "deskActive": desk_active,
+        "deskLocked": desk_locked,
         "remoteActive": remote_active,
         "remoteLocked": remote_locked,
         "restartPending": restart_pending,
@@ -225,6 +259,7 @@ def status():
         "hyprRdp": hypr_rdp,
         "isGitCheckout": os.path.isdir(os.path.join(KIT, ".git")),
         "checks": checks,
+        "logins": recent_logins(),
         "time": int(time.time()),
     }
 
@@ -245,6 +280,9 @@ def main(argv):
             print(json.dumps(s))
         else:
             print(f"state: {s['state']}  session: {s['session']}  client: {s['client'] or '-'}")
+            for e in s["logins"]:
+                when = time.strftime("%Y-%m-%d %H:%M", time.localtime(e["time"]))
+                print(f"  login  {when}  {'RDP from ' + e['from'] if e['kind'] == 'rdp' else 'desk'}")
             for c in s["checks"]:
                 print(f"  {'ok ' if c['ok'] else '!! '} {c['text']}")
         return 0

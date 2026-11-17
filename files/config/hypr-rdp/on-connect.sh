@@ -7,6 +7,12 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 M="$XDG_RUNTIME_DIR/rdp-sessions"; mkdir -p "$M"
 touch "$M/remote-used"              # rdp-gate.py asks on the desk next time it's unlocked
 
+# Login history for the plugin (last 50 kept). The gate wrote the client's address.
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-rdp/logins.tsv"
+mkdir -p "$(dirname "$LOG")"
+printf '%s\trdp\t%s\n' "$(date +%s)" "$(cat "$M/client" 2>/dev/null)" >> "$LOG"
+tail -n 50 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+
 if desk=$("$HERE/hypr-session.sh" desk); then
     set -- $desk
     HYPRLAND_INSTANCE_SIGNATURE=$1 WAYLAND_DISPLAY=$2 \

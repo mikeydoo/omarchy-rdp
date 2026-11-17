@@ -37,11 +37,6 @@ Panel {
     : active || inRemote ? barForeground
     : Qt.darker(barForeground, 1.55)
 
-  readonly property string connectCommand: st
-    ? "xfreerdp3 /v:" + (st.address || "<host>") + " /u:" + (st.user || "$USER")
-      + " /sec:tls /cert:ignore /dynamic-resolution"
-    : ""
-
   // Problems worth showing. Before setup only the ones setup can't fix (no GPU render
   // node, an Omarchy change): the rest is simply "not installed yet".
   readonly property var shownProblems: svc.problems.filter(function(c) {
@@ -57,14 +52,11 @@ Panel {
   }
   Timer { id: disarm; interval: 4000; onTriggered: root.armed = "" }
 
-  property bool copied: false
-  Timer { id: copiedReset; interval: 1500; onTriggered: root.copied = false }
-
   function metaText() {
     if (!svc.loaded) return strings.t("state.loading")
     if (inRemote) return strings.t("meta.remote")
     if (state === "connected") return strings.t("meta.connected")
-    if (state === "ready") return strings.t("meta.ready").arg(st.address || "")
+    if (state === "ready") return strings.t("meta.ready")
     return strings.t("state." + state)
   }
 
@@ -77,14 +69,32 @@ Panel {
   function remoteCaption() {
     if (!st) return ""
     if (st.restartPending) return strings.t("remote.restartPending")
-    if (!st.remoteActive) return strings.t("remote.stopped")
-    return st.remoteLocked === true ? strings.t("remote.locked") : strings.t("remote.running")
+    if (st.client) return strings.t("remote.connected").arg(st.client)
+    var waiting = st.rdpActive ? strings.t("remote.waiting").arg(st.address || "") : strings.t("remote.rdpOff")
+    if (!st.remoteActive) return strings.t("remote.stopped") + " · " + waiting
+    return (st.remoteLocked === true ? strings.t("remote.locked") : strings.t("remote.running")) + " · " + waiting
   }
 
-  function copyCommand() {
-    Quickshell.execDetached(["wl-copy", "--", root.connectCommand])
-    root.copied = true
-    copiedReset.restart()
+  function deskCaption() {
+    if (!st) return ""
+    if (!st.deskActive) return strings.t("desk.none")
+    if (st.deskLocked === true) return strings.t("desk.locked")
+    if (st.deskLocked === false) return strings.t("desk.inUse")
+    return strings.t("desk.loggedIn")
+  }
+
+  readonly property var logins: st && Array.isArray(st.logins) ? st.logins : []
+
+  // "Today 11:57", "Yesterday 18:02", "Mon 16 Nov 09:30".
+  function whenText(epoch) {
+    var d = new Date(epoch * 1000)
+    var now = new Date((st && st.time ? st.time : Date.now() / 1000) * 1000)
+    var day = function(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime() }
+    var diff = Math.round((day(now) - day(d)) / 86400000)
+    var hm = Qt.formatTime(d, "HH:mm")
+    if (diff === 0) return strings.t("when.today").arg(hm)
+    if (diff === 1) return strings.t("when.yesterday").arg(hm)
+    return Qt.formatDateTime(d, "ddd d MMM HH:mm")
   }
 
   Service {
@@ -155,7 +165,6 @@ Panel {
       onTextKey: function(t) {
         var key = t.toLowerCase()
         if (key === "r") svc.refresh()
-        else if (key === "c" && root.isSetUp && !root.inRemote) root.copyCommand()
       }
 
       Flickable {
@@ -284,33 +293,7 @@ Panel {
             }
           }
 
-          // --- connect -------------------------------------------------------------------
-          PanelSeparator {
-            visible: root.isSetUp && !root.inRemote
-            foreground: root.foreground
-          }
-
-          Column {
-            visible: root.isSetUp && !root.inRemote
-            width: parent.width
-            spacing: Style.space(4)
-
-            PanelSectionHeader {
-              text: strings.t("section.connect")
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            ActionRow {
-              glyph: ""
-              label: root.copied ? strings.t("copied") : strings.t("copyCommand")
-              caption: root.connectCommand
-              hint: "C"
-              onActivated: root.copyCommand()
-            }
-          }
-
-          // --- the remote session ------------------------------------------------------------
+          // --- sessions: the desk and the remote, the other one can be logged out ------------
           PanelSeparator {
             visible: root.isSetUp
             foreground: root.foreground
@@ -322,20 +305,33 @@ Panel {
             spacing: Style.space(4)
 
             PanelSectionHeader {
-              text: root.inRemote ? strings.t("section.desk") : strings.t("section.session")
+              text: strings.t("section.sessions")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
 
-            ActionRow {
-              visible: !root.inRemote
-              glyph: root.st && root.st.remoteActive ? "" : ""
-              label: root.st && root.st.remoteActive ? strings.t("remote.title.running") : strings.t("remote.title.stopped")
+            SessionRow {
+              which: "desk"
+              glyph: ""
+              title: strings.t("desk.title")
+              here: !root.inRemote
+              active: !!root.st && root.st.deskActive
+              caption: root.deskCaption()
+              action: "logout-desk"
+            }
+
+            SessionRow {
+              which: "remote"
+              glyph: "󰢹"
+              title: strings.t("remote.title")
+              here: root.inRemote
+              active: !!root.st && root.st.remoteActive
               caption: root.remoteCaption()
               captionColor: root.st && root.st.restartPending ? root.urgent : root.dim
-              interactive: false
+              action: "logout-remote"
             }
 
+            // Desk only: the remote session's other controls.
             ActionRow {
               visible: !root.inRemote && !!root.st && !!root.st.client
               glyph: ""
@@ -354,25 +350,51 @@ Panel {
               hint: svc.busy === "restart-remote" ? strings.t("working") : ""
               onActivated: root.confirmThen("restart", function() { svc.run("restart-remote", ["restart-remote"]) })
             }
+          }
 
-            ActionRow {
-              visible: !root.inRemote && !!root.st && root.st.remoteActive
-              glyph: ""
-              label: root.armed === "logout" ? strings.t("confirm") : strings.t("logout")
-              labelColor: root.armed === "logout" ? root.urgent : root.foreground
-              caption: strings.t("logout.caption")
-              hint: svc.busy === "logout-remote" ? strings.t("working") : ""
-              onActivated: root.confirmThen("logout", function() { svc.run("logout-remote", ["logout-remote"]) })
+          // --- recent logins -------------------------------------------------------------
+          PanelSeparator {
+            visible: root.isSetUp
+            foreground: root.foreground
+          }
+
+          Column {
+            visible: root.isSetUp
+            width: parent.width
+            spacing: 0
+
+            PanelSectionHeader {
+              text: strings.t("section.logins")
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              bottomPadding: Style.space(4)
             }
 
-            ActionRow {
-              visible: root.inRemote
-              glyph: ""
-              label: root.armed === "logout-desk" ? strings.t("confirm") : strings.t("logoutDesk")
-              labelColor: root.armed === "logout-desk" ? root.urgent : root.foreground
-              caption: strings.t("logoutDesk.caption")
-              hint: svc.busy === "logout-desk" ? strings.t("working") : ""
-              onActivated: root.confirmThen("logout-desk", function() { svc.run("logout-desk", ["logout-desk"]) })
+            Repeater {
+              model: root.logins
+              ActionRow {
+                id: loginRow
+                required property var modelData
+                glyph: loginRow.modelData.kind === "rdp" ? "󰢹" : ""
+                glyphColor: root.dim
+                label: loginRow.modelData.kind === "rdp"
+                  ? strings.t("login.rdp").arg(loginRow.modelData.from || "?")
+                  : strings.t("login.desk")
+                hint: root.whenText(loginRow.modelData.time)
+                interactive: false
+                compact: true
+              }
+            }
+
+            Text {
+              visible: root.logins.length === 0
+              textFormat: Text.PlainText
+              width: parent.width
+              leftPadding: Style.space(10)
+              text: strings.t("login.none")
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
             }
           }
 
@@ -438,6 +460,29 @@ Panel {
     }
   }
 
+  // One session (desk or remote): its state, "this session" for the one you're in, and
+  // LOG OUT (two clicks) for the other one while it's running.
+  component SessionRow: ActionRow {
+    id: sessionRow
+    property string which: ""
+    property string title: ""
+    property bool here: false
+    property bool active: false
+    property string action: ""
+    readonly property bool canLogOut: !here && active
+    readonly property bool armedHere: root.armed === action
+
+    label: armedHere ? strings.t("logoutConfirm").arg(title) : title
+    labelColor: armedHere ? root.urgent : root.foreground
+    glyphColor: active ? root.foreground : root.dim
+    hint: here ? strings.t("thisSession")
+      : svc.busy === action ? strings.t("working")
+      : canLogOut ? strings.t("logOut") : ""
+    hintColor: canLogOut ? (armedHere ? root.urgent : root.foreground) : root.dim
+    interactive: canLogOut
+    onActivated: root.confirmThen(action, function() { svc.run(sessionRow.action, [sessionRow.action]) })
+  }
+
   // A row in the panel: icon, label, optional caption below and hint on the right.
   // Clickable unless `interactive` is false; highlights under the pointer.
   component ActionRow: CursorSurface {
@@ -449,6 +494,8 @@ Panel {
     property string caption: ""
     property color captionColor: root.dim
     property string hint: ""
+    property color hintColor: root.dim
+    property bool compact: false
     property bool chevron: false
     property bool wrap: true
     property bool interactive: true
@@ -457,7 +504,7 @@ Panel {
     width: parent ? parent.width : implicitWidth
     foreground: root.foreground
     hasCursor: interactive && rowMouse.containsMouse
-    implicitHeight: rowContent.implicitHeight + Style.spacing.rowPaddingX
+    implicitHeight: rowContent.implicitHeight + (compact ? Style.space(6) : Style.spacing.rowPaddingX)
 
     MouseArea {
       id: rowMouse
@@ -520,7 +567,7 @@ Panel {
         textFormat: Text.PlainText
         visible: actionRow.hint !== ""
         text: actionRow.hint
-        color: root.dim
+        color: actionRow.hintColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         font.bold: true

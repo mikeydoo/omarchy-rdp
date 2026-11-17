@@ -19,7 +19,7 @@ runs the installer (it builds `hypr-rdp` from the AUR and asks for your password
 packages, lingering and the firewall). Re-run it any time from **Repair**.
 
 Connect from any RDP client to `<this machine>:3389` and log in with your Linux user and
-password. FreeRDP:
+password. For example, with FreeRDP:
 
 ```
 xfreerdp3 /v:<host> /u:$USER /sec:tls /cert:ignore /dynamic-resolution
@@ -47,9 +47,12 @@ Windows can't move between the two sessions (a Wayland window belongs to one com
 - **State icon:** dim = not set up / RDP off, normal = ready or connected, red = needs
   attention.
 - **Accept RDP connections** switch: starts or stops the listener on port 3389.
-- **Connect:** the FreeRDP command for this machine, with a copy button.
-- **Remote session:** running / locked / not running, and *Disconnect client*, *Restart*,
-  *Log out* (two clicks). In the remote session itself: *Log out desk session*.
+- **Sessions:** the desk and the remote session, which one you're in, and whether it's
+  in use, locked, connected or waiting for RDP. **Log out** (two clicks) the other one:
+  the remote session from the desk, the desk from the remote session. On the desk also
+  *Disconnect client* and *Restart remote session*.
+- **Recent logins:** the last five RDP logins (with the client's address) and desk logins,
+  kept in `~/.local/state/omarchy-rdp/logins.tsv`.
 - **Checks:** everything the setup needs, each problem with a **Fix** button.
 - **Update** (pull the plugin and re-install), **Repair**, **Uninstall**.
 - Settings (bar widget settings): *Lock the remote session on its first start* (off: RDP
@@ -87,6 +90,9 @@ RDP client ──► :3389  rdp-gate.py   (rdp-gate.service, always listening; n
   environment. The remote session has its own `uwsm-app` and `uwsm` first on its `PATH`:
   apps run directly in the remote session, and Log Out ends the remote session, not the
   desk.
+- **Both shells stay up.** `omarchy restart shell` (after updates, font and language
+  changes) stops the Omarchy shell in every session but starts it only in its own; the
+  gate starts it again in the other session after 15 seconds.
 - **Locking** uses Omarchy's lock screen through `omarchy-shell`, pointed at the right
   session (Omarchy's lock doesn't report to logind).
 

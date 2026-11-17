@@ -44,14 +44,14 @@ fi
 if [ "$CHOICE" = logout ]; then
     case "$1" in
     remote) systemctl --user stop hyprland-remote.service ;;   # next RDP login starts a fresh one
-    desk)   # console returns to the greeter
+    desk)   # console returns to SDDM's login screen
+        # The way Omarchy's own Log Out does it (`uwsm stop`), on the desk's session bus
+        # (the remote session has its own). Killing the session with loginctl instead
+        # takes SDDM's helper with it: SDDM treats that as a crash, starts no greeter,
+        # and the console is left with no display.
         S=$(desk_session)
-        loginctl terminate-session "$S"
-        # Killed this way, the desk Hyprland skips its exit cleanup and leaves
-        # graphical-session.target active; uwsm then refuses the next desk login
-        # ("A compositor or graphical-session* target is already active!").
-        for i in $(seq 20); do loginctl show-session "$S" >/dev/null 2>&1 || break; sleep 0.5; done
-        systemctl --user stop graphical-session.target
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus" /usr/bin/uwsm stop \
+            || loginctl terminate-session "$S"
         ;;
     esac
 fi

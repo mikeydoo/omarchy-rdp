@@ -21,14 +21,14 @@ remote)
     systemctl --user is-active -q hyprland-remote.service || exit 0
     BUS="unix:path=$XDG_RUNTIME_DIR/bus"   # the desk's session bus
     TITLE="Remote session is still running"
-    BODY="Your RDP session is still logged in with its windows open. Log it out?"
+    BODY="Your RDP session is still logged in with its windows open. Log it out so apps open here? Apps that allow one copy per user (browsers, chat and music apps, password managers) may still be running there and would bring their windows up in the RDP session instead."
     ;;
 desk)
     S=$(desk_session); [ -n "$S" ] || exit 0
     P=$(remote_hypr_pid); [ -n "$P" ] || exit 1
     BUS=$(tr '\0' '\n' < /proc/$P/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
     TITLE="Desk session is still logged in"
-    BODY="Your console session is still logged in with its windows open. Log it out?"
+    BODY="Your console session is still logged in with its windows open. Log it out so apps open here? Apps that allow one copy per user (browsers, chat and music apps, password managers) may still be running there and would bring their windows up on the console instead."
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
 esac

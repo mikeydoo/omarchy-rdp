@@ -32,7 +32,7 @@ Panel {
   readonly property bool active: state === "ready" || state === "connected"
 
   // nf-md-remote_desktop
-  readonly property string glyph: "󰢹"
+  readonly property string glyph: "󱒃"
   readonly property color barIconColor: state === "attention" ? urgent
     : active || inRemote ? barForeground
     : Qt.darker(barForeground, 1.55)
@@ -449,7 +449,7 @@ Panel {
 
             SessionRow {
               which: "remote"
-              glyph: "󰢹"
+              glyph: "󱒃"
               title: strings.t("remote.title")
               here: root.inRemote
               active: !!root.st && root.st.remoteActive
@@ -502,7 +502,7 @@ Panel {
               ActionRow {
                 id: loginRow
                 required property var modelData
-                glyph: loginRow.modelData.kind === "rdp" ? "󰢹" : ""
+                glyph: loginRow.modelData.kind === "rdp" ? "󱒃" : ""
                 glyphColor: root.dim
                 label: loginRow.modelData.kind === "rdp"
                   ? strings.t("login.rdp").arg(loginRow.modelData.from || "?")

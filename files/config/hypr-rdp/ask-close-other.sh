@@ -21,58 +21,59 @@ desk_session() {
 case "$1" in
 remote)
     systemctl --user is-active -q hyprland-remote.service || exit 0
-    BUS="unix:path=$XDG_RUNTIME_DIR/bus"   # the desk's session bus
     TITLE="RDP session is still logged in"
     SHOW_IN=desk
-    WHERE="in the RDP session"
+    WHERE_SHORT="in the RDP session instead of here"
     ;;
 desk)
     S=$(desk_session); [ -n "$S" ] || exit 0
     P=$(remote_hypr_pid); [ -n "$P" ] || exit 1
-    BUS=$(tr '\0' '\n' < /proc/$P/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
     TITLE="Console session is still logged in"
     SHOW_IN=remote
-    WHERE="on the console"
+    WHERE_SHORT="on the console instead of here"
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
 esac
 if [ "${2:-}" = --now ]; then
     CHOICE=logout
 else
-[ -n "$BUS" ] || exit 1
+# Asked with Omarchy's own menu (omarchy-menu-select) in the session that took over: a
+# fixed box in the middle of the screen, unlike a notification. Dismissing it (Escape,
+# clicking outside) keeps the other session.
+W=$("$HERE/hypr-session.sh" "$SHOW_IN" | awk '{print $2}')
+[ -n "$W" ] || exit 1
+export WAYLAND_DISPLAY="$W" OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 
 # A freshly started session (the gate starts the remote one on the RDP login that asks
-# this) takes a few seconds to bring up its shell, which shows notifications: wait for it.
+# this) takes a few seconds to bring up its shell, which shows the menu: wait for it.
 for i in $(seq 60); do
-    dbus-send --bus="$BUS" --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
-        org.freedesktop.DBus.NameHasOwner string:org.freedesktop.Notifications 2>/dev/null \
-        | grep -q 'boolean true' && break
+    [ "$(omarchy-shell notifications ping 2>/dev/null)" = ok ] && break
     sleep 1
 done
-sleep 1   # let the shell's toast deck come up too
+sleep 1
 
-WHY="Both sessions are you, the same user. Some apps only allow one copy per user (browsers on the same profile, chat and music apps, password managers), so they can only run in one of them. Any still open there would bring their windows up $WHERE instead of here, or say they're already running. Logging it out closes its apps, so they open where you are."
+TAB=$(printf '\t')
+row() { printf '%s\t%s\t%s' "$1" "$2" "$3"; }   # glyph, label, caption
+LOGOUT=$(row "$(printf '\uf08b')" "Log it out" "Closes its windows, so apps open here")
+KEEP=$(row "$(printf '\uf00c')" "Keep it" "Leaves its windows open")
+WHYROW=$(row "$(printf '\uf059')" "Why?" "Some apps only allow one copy per user")
+ask() { omarchy-menu-select "$@" -- --width 560 2>/dev/null | cut -d"$TAB" -f1; }
 
-CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
-    -A logout="Log it out" -A keep="Keep it" -A why="Why?" "$TITLE")
-# Why?: the same question again, with the explanation.
-# Opened expanded, so the explanation shows in full without hovering: Omarchy's toasts
-# show two lines until hovered. (Its expand call toggles, so only when not already open.)
-if [ "$CHOICE" = why ]; then
-    OUT=$(mktemp)
-    DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
-        -A logout="Log it out" -A keep="Keep it" "$TITLE" "$WHY" > "$OUT" &
-    NOTIFY=$!
-    sleep 1
-    W=$("$HERE/hypr-session.sh" "$SHOW_IN" | awk '{print $2}')
-    if [ -n "$W" ]; then
-        export WAYLAND_DISPLAY="$W" OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
-        omarchy-shell notifications probe 2>/dev/null | grep -q '"expanded":true' \
-            || omarchy-shell notifications expand >/dev/null 2>&1
-    fi
-    wait "$NOTIFY"
-    CHOICE=$(cat "$OUT"); rm -f "$OUT"
-fi
+CHOICE=$(ask "$TITLE" "$LOGOUT" "$KEEP" "$WHYROW")
+# Why?: the explanation, then the same choice again (picking an explanation row shows it
+# again; dismissing the menu keeps the other session).
+while [ -n "$CHOICE" ] && [ "$CHOICE" != "Log it out" ] && [ "$CHOICE" != "Keep it" ]; do
+    CHOICE=$(ask "Why log it out?" \
+        "$(row "$(printf '\uf007')" "Both sessions are you, the same user" "Some apps only allow one copy per user")" \
+        "$(row "$(printf '\uf2d2')" "Like browsers, chat and music apps" "and password managers: one session at a time")" \
+        "$(row "$(printf '\uf2d0')" "Any still open there open their windows there" "$WHERE_SHORT, or say they're already running")" \
+        "$(row "$(printf '\uf0e2')" "Logging it out closes its apps" "so they open where you are")" \
+        "$LOGOUT" "$KEEP")
+done
+case "$CHOICE" in
+    "Log it out") CHOICE=logout ;;
+    *) CHOICE=keep ;;
+esac
 fi
 
 if [ "$CHOICE" = logout ]; then

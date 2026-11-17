@@ -45,6 +45,9 @@ Panel {
 
   // Two-step rows for anything that closes windows: the first click arms, the second
   // (within a few seconds) does it.
+  // The "why log out" note: collapsed until clicked (kept while the shell runs).
+  property bool noteOpen: false
+
   property string armed: ""
   function confirmThen(name, action) {
     if (armed === name) { armed = ""; action() }
@@ -415,7 +418,7 @@ Panel {
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.icon
-              Layout.alignment: Qt.AlignTop
+              Layout.alignment: root.noteOpen ? Qt.AlignTop : Qt.AlignVCenter
               Layout.leftMargin: Style.space(10)
               Layout.preferredWidth: Style.font.icon * 1.3
               horizontalAlignment: Text.AlignHCenter
@@ -428,15 +431,24 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: strings.t("note.title")
-                color: root.foreground
+                text: strings.t("note.title") + (root.noteOpen ? "  \u25be" : "  \u203a")
+                color: noteMouse.containsMouse ? root.foreground : Qt.lighter(root.dim, 1.15)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
                 wrapMode: Text.WordWrap
+
+                MouseArea {
+                  id: noteMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.noteOpen = !root.noteOpen
+                }
               }
 
               Text {
+                visible: root.noteOpen
                 textFormat: Text.PlainText
                 width: parent.width
                 text: strings.t("note.body")

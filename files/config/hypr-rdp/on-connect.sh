@@ -1,15 +1,20 @@
 #!/bin/sh
-# Successful RDP login (hypr-rdp on_session_start, runs only after authentication).
-# Newest login wins: lock this user's desk (seat0) session.
-# If the desk was used since the last RDP login, ask in the remote session whether to log it out.
+# Successful RDP login (hypr-rdp on_session_start: runs only after authentication).
+# Newest login wins: lock the desk session with Omarchy's own lock (`omarchy system lock`),
+# pointed at the desk's Hyprland. If the desk was used since the last RDP login, ask in
+# the remote session whether to log it out.
+HERE=$(cd "$(dirname "$0")" && pwd)
 M="$XDG_RUNTIME_DIR/rdp-sessions"; mkdir -p "$M"
 touch "$M/remote-used"              # rdp-gate.py asks on the desk next time it's unlocked
 
-S=$(loginctl list-sessions --no-legend | awk -v u="$(id -un)" '$3==u && $4=="seat0" {print $1; exit}')
-[ -n "$S" ] && loginctl lock-session "$S"
+if desk=$("$HERE/hypr-session.sh" desk); then
+    set -- $desk
+    HYPRLAND_INSTANCE_SIGNATURE=$1 WAYLAND_DISPLAY=$2 \
+        OMARCHY_PATH=${OMARCHY_PATH:-/usr/share/omarchy} omarchy-system-lock
+fi
 
 if [ -e "$M/desk-used" ]; then          # set by rdp-gate.py when the desk gets unlocked
     rm -f "$M/desk-used"
-    setsid -f $HOME/.config/hypr-rdp/ask-close-other.sh desk >/dev/null 2>&1
+    setsid -f "$HERE/ask-close-other.sh" desk >/dev/null 2>&1
 fi
 exit 0

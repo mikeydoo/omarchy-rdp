@@ -1,0 +1,26 @@
+#!/bin/sh
+# uwsm stand-in for the RDP remote session only (first on its PATH, set by
+# run-headless-hyprland.sh; the desk keeps the real one). The remote session isn't a
+# uwsm session, so the session commands must not reach the desk's:
+#   uwsm stop   (Omarchy's Log Out) ends the remote session, not the desk
+#   uwsm app    runs the app here (see uwsm-app)
+#   uwsm check  says "not a uwsm session"
+# Anything else goes to the real uwsm.
+HERE=$(cd "$(dirname "$0")" && pwd)
+case ${1:-} in
+stop)
+    exec systemctl --user stop hyprland-remote.service
+    ;;
+app)
+    shift
+    exec "$HERE/uwsm-app" "$@"
+    ;;
+check)
+    exit 1
+    ;;
+start | finalize)
+    echo "uwsm $1: not available in the RDP remote session" >&2
+    exit 1
+    ;;
+esac
+exec /usr/bin/uwsm "$@"

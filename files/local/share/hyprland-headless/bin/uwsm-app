@@ -1,0 +1,41 @@
+#!/bin/sh
+# uwsm-app stand-in for the RDP remote session only (first on its PATH, set by
+# run-headless-hyprland.sh; the desk keeps the real one).
+#
+# Omarchy starts apps with `uwsm-app [options] -- <command>`. The real uwsm-app starts
+# them as systemd scopes with the systemd user environment, which belongs to the desk,
+# so they'd open on the desk. This runs them directly instead, with this session's
+# environment. Only the systemd bookkeeping is lost (no app-*.scope per app).
+#
+# Handles uwsm app's options (-s -t -a -u -d -p -S take a value; -T runs the command in
+# a terminal) and its Desktop Entry form (`foo.desktop` or `foo.desktop:action`).
+terminal=0
+while [ $# -gt 0 ]; do
+    case $1 in
+    --) shift; break ;;
+    -T) terminal=1; shift ;;
+    -s | -t | -a | -u | -d | -p | -S) shift 2 ;;
+    -[stauedpS]?*) shift ;; # value attached, e.g. -sa
+    -h | --help)
+        echo "uwsm-app stand-in for the RDP remote session: runs the command directly." >&2
+        exit 0
+        ;;
+    -*) shift ;; # unknown option without a value: ignore
+    *) break ;;
+    esac
+done
+[ $# -gt 0 ] || { echo "uwsm-app: no command" >&2; exit 1; }
+
+case $1 in
+*.desktop | *.desktop:*)
+    entry=${1%%:*}
+    shift
+    entry=$(basename "$entry" .desktop)
+    set -- gtk-launch "$entry" "$@"
+    ;;
+esac
+
+if [ "$terminal" = 1 ]; then
+    exec xdg-terminal-exec -- "$@"
+fi
+exec "$@"

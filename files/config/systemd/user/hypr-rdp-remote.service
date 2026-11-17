@@ -5,6 +5,8 @@ After=hyprland-remote.service
 
 [Service]
 Type=simple
+# omarchy-shell (lock state, locking the desk) needs it; at boot the desk hasn't set it yet.
+Environment=OMARCHY_PATH=/usr/share/omarchy
 ExecStart=%h/.config/hypr-rdp/hypr-rdp-remote.sh
 Restart=on-failure
 RestartSec=3

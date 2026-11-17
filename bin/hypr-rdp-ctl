@@ -1,0 +1,296 @@
+#!/usr/bin/env -S python3 -I
+"""hypr-rdp-ctl: status, checks and controls for the RDP remote session.
+
+The plugin's panel runs this for everything it shows and every button; it works the same
+from a shell.
+
+  hypr-rdp-ctl status [--json]     state of the setup, the sessions and the checks
+  hypr-rdp-ctl install [args]      run install.sh (set up / repair / update the files)
+  hypr-rdp-ctl uninstall [--yes]   run install.sh --uninstall
+  hypr-rdp-ctl update              git pull the plugin, then run install.sh
+  hypr-rdp-ctl rebuild             rebuild the patched libaquamarine if aquamarine changed
+  hypr-rdp-ctl rdp on|off          start+enable / stop+disable the RDP gate (port 3389)
+  hypr-rdp-ctl kick                disconnect the current RDP client
+  hypr-rdp-ctl restart-remote      restart the remote session (closes its windows)
+  hypr-rdp-ctl logout-remote       log out the remote session (closes its windows)
+  hypr-rdp-ctl logout-desk         log out the desk session (from the remote session)
+  hypr-rdp-ctl lock-once           lock this remote session, once per start of it
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+KIT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+HOME = os.path.expanduser("~")
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+MARKERS = os.path.join(RUNTIME, "rdp-sessions")
+OMARCHY_PATH = os.environ.get("OMARCHY_PATH", "/usr/share/omarchy")
+HEADLESS = os.path.join(HOME, ".local/share/hyprland-headless")
+CONF = os.path.join(HOME, ".config/hypr-rdp")
+UNITS = ["hyprland-remote.service", "hypr-rdp-remote.service", "rdp-gate.service"]
+HYPR_RDP_MIN = "0.1.8"
+
+
+def run(*cmd, env=None, timeout=10):
+    """(returncode, stdout) of a command; (127, "") when it can't run."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+        return p.returncode, p.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def pkg_version(name):
+    rc, out = run("pacman", "-Q", name)
+    return out.split()[1] if rc == 0 and len(out.split()) == 2 else ""
+
+
+def vercmp(a, b):
+    rc, out = run("vercmp", a, b)
+    try:
+        return int(out)
+    except ValueError:
+        return 0
+
+
+def unit_prop(unit, prop):
+    return run("systemctl", "--user", "show", "-p", prop, "--value", "--timestamp=unix", unit)[1]
+
+
+def is_active(unit):
+    return run("systemctl", "--user", "is-active", unit)[1] == "active"
+
+
+def is_enabled(unit):
+    return run("systemctl", "--user", "is-enabled", unit)[1] == "enabled"
+
+
+def session_kind():
+    return "remote" if os.environ.get("AQ_HEADLESS_RENDER_NODE") else "desk"
+
+
+def hypr_session(which):
+    """(signature, wayland socket) of the desk or remote Hyprland, or None."""
+    rc, out = run(os.path.join(CONF, "hypr-session.sh"), which)
+    parts = out.split()
+    return (parts[0], parts[1]) if rc == 0 and len(parts) >= 2 else None
+
+
+def shell_locked(wayland_display):
+    env = dict(os.environ, WAYLAND_DISPLAY=wayland_display, OMARCHY_PATH=OMARCHY_PATH)
+    out = run("omarchy-shell", "lock", "isLocked", env=env, timeout=5)[1]
+    return {"true": True, "false": False}.get(out)
+
+
+def lan_address():
+    out = run("ip", "-4", "route", "get", "1.1.1.1")[1]
+    m = re.search(r"\bsrc (\S+)", out)
+    return m.group(1) if m else ""
+
+
+def files_current():
+    """(all installed, all up to date): files/ against what's installed in ~."""
+    installed = current = True
+    root = os.path.join(KIT, "files")
+    for dirpath, _, names in os.walk(root):
+        for name in names:
+            src = os.path.join(dirpath, name)
+            rel = os.path.relpath(src, root)
+            dest = os.path.join(HOME, "." + rel)
+            if not os.path.exists(dest):
+                installed = current = False
+                continue
+            if rel == "config/hypr-rdp/config.toml":
+                continue  # yours to edit
+            want = read(src).replace("@HOME@", HOME)
+            if read(dest) != want:
+                current = False
+    return installed, current
+
+
+def status():
+    aq = pkg_version("aquamarine").split("-")[0]
+    patched = read(os.path.join(HEADLESS, "lib/AQUAMARINE_VERSION"))
+    failed = read(os.path.join(HEADLESS, "REBUILD_FAILED"))
+    hypr_rdp = pkg_version("hypr-rdp")
+    files_installed, files_up_to_date = files_current()
+    units_installed = all(os.path.exists(os.path.join(HOME, ".config/systemd/user", u)) for u in UNITS)
+    setup = bool(hypr_rdp) and units_installed
+    remote_active = is_active("hyprland-remote.service")
+    rdp_enabled = is_enabled("rdp-gate.service")
+    rdp_active = is_active("rdp-gate.service")
+    client = read(os.path.join(MARKERS, "client")) if rdp_active else ""
+
+    remote_locked = None
+    if remote_active:
+        remote = hypr_session("remote")
+        if remote:
+            remote_locked = shell_locked(remote[1])
+
+    # A rebuild while the remote session runs is used after its next start.
+    restart_pending = False
+    lib = os.path.join(HEADLESS, "lib/AQUAMARINE_VERSION")
+    started = unit_prop("hyprland-remote.service", "ExecMainStartTimestamp").lstrip("@")
+    if remote_active and started.isdigit() and os.path.exists(lib):
+        restart_pending = os.path.getmtime(lib) > int(started)
+
+    checks = []
+
+    def check(cid, ok, text, severity="error", fix=None):
+        checks.append({"id": cid, "ok": bool(ok), "severity": severity, "text": text, "fix": fix})
+
+    omarchy_lua = read(os.path.join(OMARCHY_PATH, "default/hypr/omarchy.lua"))
+    check("omarchy", bool(omarchy_lua), "Omarchy found")
+    check("omarchy-autostart", 'require("default.hypr.autostart")' in omarchy_lua,
+          "Omarchy loads its autostart as the remote session's config expects"
+          if 'require("default.hypr.autostart")' in omarchy_lua else
+          "Omarchy changed how it loads its autostart: this plugin needs an update")
+    nodes = sorted(n for n in os.listdir("/dev/dri") if n.startswith("renderD")) if os.path.isdir("/dev/dri") else []
+    check("render-node", nodes, f"GPU render node /dev/dri/{nodes[0]}" if nodes else
+          "No GPU render node (/dev/dri/renderD*); in a VM use a VirGL (virtio-gl) display")
+    if hypr_rdp:
+        check("hypr-rdp", vercmp(hypr_rdp, HYPR_RDP_MIN) >= 0,
+              f"hypr-rdp {hypr_rdp}" if vercmp(hypr_rdp, HYPR_RDP_MIN) >= 0 else
+              f"hypr-rdp {hypr_rdp} is older than {HYPR_RDP_MIN}", fix="install")
+    else:
+        check("hypr-rdp", False, "hypr-rdp is not installed", fix="install")
+    tools = [t for t in ("cmake", "hyprwayland-scanner") if not shutil.which(t)]
+    check("build-tools", not tools, "Build tools installed" if not tools else
+          "Missing build tools: " + ", ".join(tools), fix="install")
+    check("files", files_installed and files_up_to_date,
+          "Files installed and up to date" if files_installed and files_up_to_date else
+          "Files out of date" if files_installed else "Files not installed", fix="install")
+    if failed and failed == aq:
+        check("libaquamarine", False,
+              f"The patched libaquamarine doesn't build for aquamarine {aq}: the patch needs porting")
+    else:
+        check("libaquamarine", patched == aq,
+              f"Patched libaquamarine {patched}" if patched == aq else
+              f"Patched libaquamarine is for '{patched or 'none'}', aquamarine is {aq}", fix="rebuild")
+    check("pam", os.path.exists("/etc/pam.d/hypr-rdp"), "Password login (PAM) configured" if
+          os.path.exists("/etc/pam.d/hypr-rdp") else "/etc/pam.d/hypr-rdp is missing", fix="install")
+    linger = run("loginctl", "show-user", os.environ.get("USER", ""), "-p", "Linger", "--value")[1] == "yes"
+    check("linger", linger, "Starts at boot (lingering on)" if linger else
+          "Lingering is off: the remote session won't start at boot", fix="install")
+    for u in ("hyprland-remote.service", "hypr-rdp-remote.service"):
+        en = is_enabled(u)
+        check(f"enabled-{u}", en, f"{u} enabled" if en else f"{u} is not enabled", fix="install")
+    failed_unit = run("systemctl", "--user", "is-failed", "hyprland-remote.service")[1] == "failed"
+    check("remote-running", not failed_unit, "Remote session not in a failed state" if not failed_unit else
+          "The remote session failed to start (journalctl --user -u hyprland-remote)", fix="restart-remote")
+    if rdp_enabled:
+        check("rdp-gate", rdp_active, "RDP gate listening on 3389" if rdp_active else
+              "RDP gate is enabled but not running", fix="rdp-on")
+
+    problems = [c for c in checks if not c["ok"]]
+    if not setup:
+        state = "not-set-up"
+    elif any(c["severity"] == "error" for c in problems):
+        state = "attention"
+    elif client:
+        state = "connected"
+    elif not rdp_active:
+        state = "off"
+    else:
+        state = "ready"
+
+    return {
+        "version": json.loads(read(os.path.join(KIT, "manifest.json")) or "{}").get("version", ""),
+        "session": session_kind(),
+        "state": state,
+        "setup": setup,
+        "rdpEnabled": rdp_enabled,
+        "rdpActive": rdp_active,
+        "client": client,
+        "address": lan_address(),
+        "user": os.environ.get("USER", ""),
+        "remoteActive": remote_active,
+        "remoteLocked": remote_locked,
+        "restartPending": restart_pending,
+        "aquamarine": aq,
+        "patched": patched,
+        "rebuildFailed": failed,
+        "hyprRdp": hypr_rdp,
+        "isGitCheckout": os.path.isdir(os.path.join(KIT, ".git")),
+        "checks": checks,
+        "time": int(time.time()),
+    }
+
+
+def systemctl(*args):
+    return subprocess.call(["systemctl", "--user", *args])
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    cmd, args = argv[0], argv[1:]
+
+    if cmd == "status":
+        s = status()
+        if "--json" in args:
+            print(json.dumps(s))
+        else:
+            print(f"state: {s['state']}  session: {s['session']}  client: {s['client'] or '-'}")
+            for c in s["checks"]:
+                print(f"  {'ok ' if c['ok'] else '!! '} {c['text']}")
+        return 0
+    if cmd == "install":
+        os.execv(os.path.join(KIT, "install.sh"), [os.path.join(KIT, "install.sh"), *args])
+    if cmd == "uninstall":
+        os.execv(os.path.join(KIT, "install.sh"), [os.path.join(KIT, "install.sh"), "--uninstall", *args])
+    if cmd == "update":
+        if not os.path.isdir(os.path.join(KIT, ".git")):
+            print(f"{KIT} is not a git checkout: can't update it", file=sys.stderr)
+            return 1
+        if subprocess.call(["git", "-C", KIT, "pull", "--ff-only"]) != 0:
+            return 1
+        os.execv(os.path.join(KIT, "install.sh"), [os.path.join(KIT, "install.sh")])
+    if cmd == "rebuild":
+        script = os.path.join(HEADLESS, "rebuild-if-stale.sh")
+        if not os.access(script, os.X_OK):
+            print("not set up yet", file=sys.stderr)
+            return 1
+        return subprocess.call([script])
+    if cmd == "rdp" and args[:1] == ["on"]:
+        return systemctl("enable", "--now", "rdp-gate.service")
+    if cmd == "rdp" and args[:1] == ["off"]:
+        return systemctl("disable", "--now", "rdp-gate.service")
+    if cmd == "kick":
+        return systemctl("kill", "-s", "USR1", "--kill-whom=main", "rdp-gate.service")
+    if cmd == "restart-remote":
+        systemctl("reset-failed", "hyprland-remote.service")
+        return systemctl("restart", "hyprland-remote.service")
+    if cmd == "logout-remote":
+        return systemctl("stop", "hyprland-remote.service")
+    if cmd == "logout-desk":
+        return subprocess.call([os.path.join(CONF, "ask-close-other.sh"), "desk", "--now"])
+    if cmd == "lock-once":
+        if session_kind() != "remote":
+            print("not in the remote session", file=sys.stderr)
+            return 1
+        marker = os.path.join(MARKERS, "locked-" + os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "unknown"))
+        if os.path.exists(marker):
+            return 0
+        os.makedirs(MARKERS, exist_ok=True)
+        open(marker, "a").close()
+        return subprocess.call(["omarchy-shell", "-q", "lock", "lock"])
+    print(f"unknown command: {' '.join(argv)} (see --help)", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

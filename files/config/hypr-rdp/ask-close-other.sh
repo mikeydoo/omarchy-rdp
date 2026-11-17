@@ -3,6 +3,7 @@
 #   ask-close-other.sh remote   -> asked on the desk:   "Remote session still running"
 #   ask-close-other.sh desk     -> asked in the remote: "Desk session still logged in"
 # Called (in the background) by rdp-gate.py on desk takeover and by on-connect.sh on RDP login.
+#   ask-close-other.sh desk|remote --now   log it out without asking (the plugin's buttons)
 
 remote_hypr_pid() {
     CG=$(systemctl --user show -p ControlGroup --value hyprland-remote.service)
@@ -31,10 +32,14 @@ desk)
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
 esac
+if [ "${2:-}" = --now ]; then
+    CHOICE=logout
+else
 [ -n "$BUS" ] || exit 1
 
 CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
     -A logout="Log it out" -A keep="Keep it" "$TITLE" "$BODY")
+fi
 
 if [ "$CHOICE" = logout ]; then
     case "$1" in

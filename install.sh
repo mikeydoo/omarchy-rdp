@@ -1,15 +1,17 @@
 #!/bin/bash
 # Install (or bring up to date) the RDP remote session on Omarchy: a second, headless
 # Hyprland session reached over RDP on port 3389, separate from the desk session.
-# See README.md for how it works.
+# Normally run from the plugin's panel (Set up / Repair / Uninstall), which opens it in a
+# terminal; it works the same from a shell. See README.md for how it works.
 #
 #   ./install.sh                  install, or update after changes / Omarchy updates
 #   ./install.sh --lan <CIDR>     allow RDP from this network (default: this machine's LAN)
-#   ./install.sh --uninstall      remove everything this script added (asks first)
+#   ./install.sh --uninstall      remove everything this script added (asks first;
+#                                 --yes to skip asking)
 #
 # Runs as you; uses sudo only for packages, lingering and the firewall. Nothing stock is
-# edited: no files in /usr/share/omarchy, ~/.config/hypr, ~/.config/omarchy (except the
-# hook folder) or /etc/sddm.conf.d are changed. Safe to re-run.
+# edited: no files in /usr/share/omarchy, ~/.config/hypr, ~/.config/omarchy or
+# /etc/sddm.conf.d are changed. Safe to re-run.
 set -euo pipefail
 
 KIT=$(cd "$(dirname "$0")" && pwd)
@@ -43,6 +45,7 @@ die() {
 # --- arguments -------------------------------------------------------------------------
 LAN=''
 MODE=install
+ASSUME_YES=0
 while (($#)); do
   case $1 in
     --lan)
@@ -58,8 +61,12 @@ while (($#)); do
       MODE=uninstall
       shift
       ;;
+    --yes | -y)
+      ASSUME_YES=1
+      shift
+      ;;
     -h | --help)
-      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown option: $1 (see --help)" ;;
@@ -101,10 +108,11 @@ This removes the RDP remote session:
   - stops and removes the services: ${UNITS[*]}
   - removes $HEADLESS (launcher, patched libaquamarine)
   - removes ~/.config/hypr-rdp (config.toml is backed up first)
-  - removes this kit's Omarchy hooks and the UFW rule(s) for port 3389
+  - removes the UFW rule(s) for port 3389
 It leaves the hypr-rdp package and lingering alone (commands to remove them are printed).
 EOF
-  read -r -p "Remove it? [y/N] " answer
+  answer=y
+  ((ASSUME_YES)) || read -r -p "Remove it? [y/N] " answer
   [[ $answer == [yY]* ]] || {
     echo "Nothing removed."
     exit 0
@@ -125,14 +133,7 @@ EOF
   fi
   rm -rf "$HEADLESS" "$HOME/.config/hypr-rdp"
   ok "removed $HEADLESS and ~/.config/hypr-rdp"
-  if [[ -d $KIT/hooks ]]; then
-    for f in "$KIT"/hooks/*/*; do
-      [[ -f $f ]] || continue
-      type=$(basename "$(dirname "$f")")
-      rm -f "$HOME/.config/omarchy/hooks/$type.d/$(basename "$f")"
-    done
-    ok "removed this kit's Omarchy hooks"
-  fi
+  rm -rf "${XDG_RUNTIME_DIR:-/run/user/$UID}/rdp-sessions"
 
   section "Firewall"
   if ufw_active; then
@@ -172,10 +173,6 @@ RENDER_NODE=$(ls /dev/dri/renderD* 2>/dev/null | head -1 || true)
 # their autostart stubbed out; that relies on omarchy.lua loading it as a module.
 grep -q 'require("default.hypr.autostart")' "$OMARCHY_PATH/default/hypr/omarchy.lua" ||
   die "Omarchy's default/hypr/omarchy.lua no longer requires default.hypr.autostart; the remote session's Hyprland config needs updating first"
-# TEMPORARY (port in progress): don't install scripts that still talk to DMS. Remove with step 7.
-if grep -rqs -e 'dms-ipc-here' -e 'dms-shell' "$KIT/files"; then
-  die "the Omarchy port isn't finished: files/ still has DMS scripts (steps 3-7 of the plan)"
-fi
 ok "Omarchy $(omarchy version 2>/dev/null || echo '?'), render node $RENDER_NODE"
 
 # --- 2.2 packages --------------------------------------------------------------------------
@@ -268,7 +265,7 @@ fi
 # --- 2.3 patched libaquamarine -----------------------------------------------------------------
 section "Patched libaquamarine"
 # Built here so the first start is quick; afterwards hyprland-remote.service (ExecStartPre)
-# and the post-update hook keep it in step with aquamarine updates.
+# and the plugin keep it in step with aquamarine updates.
 aq_ver=$(pacman -Q aquamarine | awk '{print $2}' | sed 's/-.*//')
 if [[ $(cat "$RDP_LIB/AQUAMARINE_VERSION" 2>/dev/null) == "$aq_ver" ]]; then
   skip "patched libaquamarine $aq_ver already built"
@@ -283,23 +280,6 @@ else
     warn "patched libaquamarine didn't build: the remote session can't start until it does (see README.md)"
   fi
 fi
-
-# --- 2.5 Omarchy hooks (rebuild after updates) ------------------------------------------------
-section "Omarchy hooks"
-hooks_changed=0
-if [[ -d $KIT/hooks ]]; then
-  for f in "$KIT"/hooks/*/*; do
-    [[ -f $f ]] || continue
-    type=$(basename "$(dirname "$f")")
-    dest=$HOME/.config/omarchy/hooks/$type.d/$(basename "$f")
-    if ! cmp -s "$f" "$dest" 2>/dev/null; then
-      omarchy hook install "$type" "$f" >/dev/null
-      ok "installed $type hook $(basename "$f")"
-      hooks_changed=1
-    fi
-  done
-fi
-((hooks_changed)) || skip "hooks up to date"
 
 # --- 2.6 lingering -------------------------------------------------------------------------
 section "Lingering"
@@ -355,7 +335,7 @@ if [[ $(cat "$RDP_LIB/AQUAMARINE_VERSION" 2>/dev/null) != "$aq_ver" ]]; then
 elif systemctl --user is-active --quiet hyprland-remote.service &&
   systemctl --user is-active --quiet rdp-gate.service; then
   skip "remote session and RDP gate already running"
-  if ((files_changed || hooks_changed)); then
+  if ((files_changed)); then
     # not restarted here: you may be running this over RDP
     info "restart them to use the new files (closes the remote session):"
     info "  systemctl --user restart ${UNITS[*]}"

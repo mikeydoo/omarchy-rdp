@@ -4,6 +4,8 @@ After=hyprland-remote.service
 
 [Service]
 Type=simple
+# omarchy-shell (lock state, locking the desk) needs it; at boot the desk hasn't set it yet.
+Environment=OMARCHY_PATH=/usr/share/omarchy
 ExecStart=/usr/bin/python3 -I %h/.config/hypr-rdp/rdp-gate.py
 Restart=always
 RestartSec=2

@@ -8,9 +8,13 @@
 - The moment the desk session (seat0) gets unlocked, open RDP connections are cut, and if
   the remote session was used since, the desk is asked whether to log it out.
 - If the remote session isn't running (logged out), a new connection starts a fresh one.
+- SIGUSR1 cuts the current connection (the plugin's Disconnect button).
+- The connected client's address is kept in $XDG_RUNTIME_DIR/rdp-sessions/client for the
+  plugin's status.
 """
 import asyncio
 import os
+import signal
 import subprocess
 import sys
 
@@ -20,7 +24,10 @@ POLL_SECONDS = 1.0
 REMOTE_UNIT = "hyprland-remote.service"
 START_TIMEOUT = 25.0
 MARKERS = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "rdp-sessions")
-ASK = os.path.expanduser("~/.config/hypr-rdp/ask-close-other.sh")
+CLIENT_FILE = os.path.join(MARKERS, "client")
+HERE = os.path.expanduser("~/.config/hypr-rdp")
+ASK = os.path.join(HERE, "ask-close-other.sh")
+HYPR_SESSION = os.path.join(HERE, "hypr-session.sh")
 USER = os.environ.get("USER") or subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
 
 desk_in_use = True  # updated by watch_desk()
@@ -31,47 +38,38 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-async def run(*cmd: str) -> str:
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+async def run(*cmd: str, env: dict | None = None) -> tuple[int, str]:
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=env)
     out, _ = await proc.communicate()
-    return out.decode().strip()
-
-
-def desk_dms(session: str) -> tuple[str, str] | None:
-    """(pid, shell path) of the desk's DMS quickshell: the qs whose env has our seat0 session id.
-    The remote session's DMS has no XDG_SESSION_ID (run-headless-hyprland.sh unsets it)."""
-    for pid in filter(str.isdigit, os.listdir("/proc")):
-        try:
-            with open(f"/proc/{pid}/comm") as f:
-                if f.read().strip() != "qs":
-                    continue
-            with open(f"/proc/{pid}/environ", "rb") as f:
-                if f"XDG_SESSION_ID={session}".encode() not in f.read().split(b"\0"):
-                    continue
-            with open(f"/proc/{pid}/cmdline", "rb") as f:
-                args = f.read().decode().split("\0")
-        except OSError:
-            continue
-        if "-p" in args and "/dms-shell/" in args[args.index("-p") + 1]:
-            return pid, args[args.index("-p") + 1]
-    return None
+    return proc.returncode, out.decode().strip()
 
 
 async def check_desk() -> tuple[bool, str]:
-    """(in_use, description). In use = our seat0 session exists and its DMS lock screen is off.
-    Asks the desk's DMS, not logind: the remote session's DMS writes the desk session's
-    LockedHint (it has no logind session of its own), so LockedHint=no on a remote unlock."""
-    for line in (await run("loginctl", "list-sessions", "--no-legend")).splitlines():
+    """(in_use, description). In use = our seat0 session exists and its Omarchy lock screen
+    is off. Asks the desk's Omarchy shell (through omarchy-shell, pointed at the desk's
+    display): Omarchy's lock screen doesn't report to logind (no LockedHint)."""
+    _, sessions = await run("loginctl", "list-sessions", "--no-legend")
+    for line in sessions.splitlines():
         f = line.split()
         if len(f) >= 4 and f[2] == USER and f[3] == "seat0":
-            dms = desk_dms(f[0])
-            if dms is None:
-                raise RuntimeError(f"no DMS found for desk session {f[0]}")
-            locked = await run("qs", "-p", dms[1], "ipc", "--pid", dms[0], "call", "lock", "isLocked")
+            rc, desk = await run(HYPR_SESSION, "desk")
+            if rc != 0 or not desk:
+                raise RuntimeError(f"no Hyprland found for desk session {f[0]}")
+            env = dict(os.environ, WAYLAND_DISPLAY=desk.split()[1],
+                       OMARCHY_PATH=os.environ.get("OMARCHY_PATH", "/usr/share/omarchy"))
+            _, locked = await run("omarchy-shell", "lock", "isLocked", env=env)
             if locked not in ("true", "false"):
-                raise RuntimeError(f"desk DMS lock state unreadable: {locked!r}")
+                raise RuntimeError(f"desk lock state unreadable: {locked!r}")
             return locked == "false", f"desk session {f[0]} {'unlocked' if locked == 'false' else 'locked'}"
     return False, "no desk session"
+
+
+def cut_all(reason: str) -> None:
+    if open_pipes:
+        log(f"{reason}: cutting {len(open_pipes)} RDP connection(s)")
+        for t in list(open_pipes):
+            t.cancel()
 
 
 async def watch_desk() -> None:
@@ -81,7 +79,7 @@ async def watch_desk() -> None:
     while True:
         try:
             in_use, desc = await check_desk()
-        except Exception as e:  # loginctl/DMS hiccup (or DMS still starting): keep the last known state, don't kick
+        except Exception as e:  # loginctl/shell hiccup (or the shell still starting): keep the last known state, don't kick
             if str(e) != last_error:
                 log(f"desk check failed ({e})")
                 last_error = str(e)
@@ -92,11 +90,10 @@ async def watch_desk() -> None:
         if in_use != last:
             log(desc)
             # Edge, not level: only the moment of unlocking takes over. A remote login made
-            # while the desk was unlocked must survive until its hook has locked the desk.
-            if in_use and last is not None and open_pipes:
-                log(f"desk unlocked: cutting {len(open_pipes)} RDP connection(s)")
-                for t in list(open_pipes):
-                    t.cancel()
+            # while the desk was unlocked must survive until its hook has locked the desk,
+            # and the desk's auto-login at boot (first state seen) cuts nobody.
+            if in_use and last is not None:
+                cut_all("desk unlocked")
             if in_use:
                 desk_unlocked()
             last = in_use
@@ -122,7 +119,7 @@ async def backend_connect():
         return await asyncio.open_connection(*BACKEND)
     except OSError:
         pass
-    if (await run("systemctl", "--user", "is-active", REMOTE_UNIT)) != "active":
+    if (await run("systemctl", "--user", "is-active", REMOTE_UNIT))[1] != "active":
         log("remote session not running: starting a fresh one")
         await run("systemctl", "--user", "start", REMOTE_UNIT)
     deadline = asyncio.get_running_loop().time() + START_TIMEOUT
@@ -144,6 +141,21 @@ async def pump(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> No
         writer.close()
 
 
+def set_client(peer) -> None:
+    os.makedirs(MARKERS, exist_ok=True)
+    tmp = CLIENT_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(f"{peer[0]}\n" if peer else "")
+    os.replace(tmp, CLIENT_FILE)
+
+
+def clear_client() -> None:
+    try:
+        os.remove(CLIENT_FILE)
+    except FileNotFoundError:
+        pass
+
+
 async def handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter) -> None:
     peer = client_w.get_extra_info("peername")
     try:
@@ -152,25 +164,28 @@ async def handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter)
         log(f"refused {peer}: hypr-rdp not reachable ({e})")
         client_w.close()
         return
-    if open_pipes:
-        log(f"newest connection {peer} takes over: cutting {len(open_pipes)} existing")
-        for t in list(open_pipes):
-            t.cancel()
+    cut_all(f"newest connection {peer} takes over")
     log(f"forwarding {peer}")
     task = asyncio.current_task()
     open_pipes.add(task)
+    set_client(peer)
     try:
         await asyncio.gather(pump(client_r, backend_w), pump(backend_r, client_w))
     except (asyncio.CancelledError, ConnectionError):
         pass
     finally:
         open_pipes.discard(task)
+        if not open_pipes:
+            clear_client()
         for w in (client_w, backend_w):
             w.close()
         log(f"closed {peer}")
 
 
 async def main() -> None:
+    clear_client()
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGUSR1, cut_all, "disconnect requested")
     asyncio.create_task(watch_desk())
     server = await asyncio.start_server(handle, *LISTEN, reuse_address=True)
     log(f"listening on {LISTEN[0]}:{LISTEN[1]} -> {BACKEND[0]}:{BACKEND[1]}")

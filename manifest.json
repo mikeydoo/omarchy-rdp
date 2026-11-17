@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "mikeydoo.hypr-rdp",
+  "name": "Remote Session (RDP)",
+  "version": "0.1.0",
+  "author": "mikeydoo",
+  "license": "MIT",
+  "description": "A second, headless Hyprland session you reach over RDP, separate from the desk: set it up, check it and manage it from the bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Remote Session",
+    "description": "Status of the RDP remote session, who's connected, checks with fixes, and controls.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "lockOnFirstStart": false,
+      "autoRebuild": true
+    },
+    "schema": [
+      {
+        "key": "lockOnFirstStart",
+        "type": "boolean",
+        "label": "Lock the remote session on its first start",
+        "description": "Show its lock screen after the first RDP login since it started. RDP already asks for your password, so this asks twice.",
+        "defaultValue": false
+      },
+      {
+        "key": "autoRebuild",
+        "type": "boolean",
+        "label": "Rebuild after aquamarine updates",
+        "description": "Rebuild the remote session's patched libaquamarine as soon as an update changes aquamarine (otherwise it's rebuilt when the remote session next starts).",
+        "defaultValue": true
+      }
+    ]
+  }
+}

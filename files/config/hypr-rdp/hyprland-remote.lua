@@ -1,6 +1,6 @@
 -- Hyprland config for the RDP remote session (the headless second session).
 -- Loaded by run-headless-hyprland.sh with `Hyprland --config`; the desk keeps using
--- ~/.config/hypr/hyprland.lua. Installed by omarchy-hypr-rdp: re-running its installer
+-- ~/.config/hypr/hyprland.lua. Installed by omarchy-rdp: re-running its installer
 -- replaces this file (the old one is backed up), so put remote-only changes in
 -- ~/.config/hypr-rdp/remote.lua instead.
 --

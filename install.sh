@@ -17,9 +17,9 @@ set -euo pipefail
 KIT=$(cd "$(dirname "$0")" && pwd)
 HEADLESS=$HOME/.local/share/hyprland-headless
 RDP_LIB=$HEADLESS/lib
-BACKUP_DIR=$HOME/.local/state/omarchy-hypr-rdp/backup-$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR=$HOME/.local/state/omarchy-rdp/backup-$(date +%Y%m%d-%H%M%S)
 HYPR_RDP_MIN=0.1.8 # first release that sizes its screen to the client with Lua config
-UFW_COMMENT=hypr-rdp
+UFW_COMMENT=omarchy-rdp
 OMARCHY_PATH=${OMARCHY_PATH:-/usr/share/omarchy}
 
 # --- output ----------------------------------------------------------------------------
@@ -93,7 +93,7 @@ ufw_active() { sudo ufw status 2>/dev/null | grep -q '^Status: active'; }
 
 # Numbers of the UFW rules this script added (by comment), highest first.
 ufw_rule_numbers() {
-  # lines look like "[ 5] 3389/tcp   ALLOW IN   192.168.0.0/24   # hypr-rdp"
+  # lines look like "[ 5] 3389/tcp   ALLOW IN   192.168.0.0/24   # omarchy-rdp"
   sudo ufw status numbered 2>/dev/null |
     sed -n "/# $UFW_COMMENT\$/s/^\[ *\([0-9][0-9]*\)\].*/\1/p" | sort -rn
 }
@@ -306,7 +306,7 @@ else
     old=$(ufw_rule_numbers)
     if [[ -n $old ]]; then
       for n in $old; do sudo ufw --force delete "$n" >/dev/null; done
-      info "removed the previous hypr-rdp rule(s)"
+      info "removed the previous omarchy-rdp rule(s)"
     fi
     sudo ufw allow from "$LAN" to any port 3389 proto tcp comment "$UFW_COMMENT" >/dev/null
     ok "RDP (3389/tcp) allowed from $LAN"

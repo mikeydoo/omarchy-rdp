@@ -3,13 +3,13 @@ import Quickshell
 import Quickshell.Io
 
 // State and actions for the Omarchy RDP panel. Everything goes through
-// bin/hypr-rdp-ctl; this only polls its status and runs its commands.
+// bin/omarchy-rdp-ctl; this only polls its status and runs its commands.
 Item {
   id: root
 
   // Third-party plugins have no OMARCHY_PATH-style root; resolve our own directory.
   readonly property string pluginDir: decodeURIComponent(String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "")).replace(/\/$/, "")
-  readonly property string ctl: pluginDir + "/bin/hypr-rdp-ctl"
+  readonly property string ctl: pluginDir + "/bin/omarchy-rdp-ctl"
   // The remote session's Hyprland carries the render-node variable the launcher sets.
   readonly property bool inRemote: !!Quickshell.env("AQ_HEADLESS_RENDER_NODE")
 
@@ -83,7 +83,7 @@ Item {
   }
 
   // Optional (setting, off by default): lock this remote session once per start of it.
-  // hypr-rdp-ctl keeps the once-per-start marker, so a shell restart doesn't lock again.
+  // omarchy-rdp-ctl keeps the once-per-start marker, so a shell restart doesn't lock again.
   function maybeLock() {
     if (!inRemote || !lockOnFirstStart || _lockedOnce) return
     _lockedOnce = true

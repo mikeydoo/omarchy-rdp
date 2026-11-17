@@ -1,20 +1,20 @@
 #!/usr/bin/env -S python3 -I
-"""hypr-rdp-ctl: status, checks and controls for the RDP remote session.
+"""omarchy-rdp-ctl: status, checks and controls for the RDP remote session.
 
 The plugin's panel runs this for everything it shows and every button; it works the same
 from a shell.
 
-  hypr-rdp-ctl status [--json]     state of the setup, the sessions and the checks
-  hypr-rdp-ctl install [args]      run install.sh (set up / repair / update the files)
-  hypr-rdp-ctl uninstall [--yes]   run install.sh --uninstall
-  hypr-rdp-ctl update              git pull the plugin, then run install.sh
-  hypr-rdp-ctl rebuild             rebuild the patched libaquamarine if aquamarine changed
-  hypr-rdp-ctl rdp on|off          start+enable / stop+disable the RDP gate (port 3389)
-  hypr-rdp-ctl kick                disconnect the current RDP client
-  hypr-rdp-ctl restart-remote      restart the remote session (closes its windows)
-  hypr-rdp-ctl logout-remote       log out the remote session (closes its windows)
-  hypr-rdp-ctl logout-desk         log out the desk session (from the remote session)
-  hypr-rdp-ctl lock-once           lock this remote session, once per start of it
+  omarchy-rdp-ctl status [--json]     state of the setup, the sessions and the checks
+  omarchy-rdp-ctl install [args]      run install.sh (set up / repair / update the files)
+  omarchy-rdp-ctl uninstall [--yes]   run install.sh --uninstall
+  omarchy-rdp-ctl update              git pull the plugin, then run install.sh
+  omarchy-rdp-ctl rebuild             rebuild the patched libaquamarine if aquamarine changed
+  omarchy-rdp-ctl rdp on|off          start+enable / stop+disable the RDP gate (port 3389)
+  omarchy-rdp-ctl kick                disconnect the current RDP client
+  omarchy-rdp-ctl restart-remote      restart the remote session (closes its windows)
+  omarchy-rdp-ctl logout-remote       log out the remote session (closes its windows)
+  omarchy-rdp-ctl logout-desk         log out the desk session (from the remote session)
+  omarchy-rdp-ctl lock-once           lock this remote session, once per start of it
 """
 import json
 import os

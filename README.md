@@ -1,6 +1,6 @@
 # Omarchy RDP
 
-An Omarchy plugin (`omarchy-hypr-rdp`) for a second, **headless** Hyprland session you reach over RDP, separate
+An Omarchy plugin (`omarchy-rdp`) for a second, **headless** Hyprland session you reach over RDP, separate
 from the session at the desk: same user, same Omarchy config, its own windows. One of the
 two is in use at a time; the newest login wins. Set it up, check it and manage it from the
 bar.
@@ -11,7 +11,7 @@ bar.
 ## Install
 
 ```
-omarchy plugin add https://github.com/mikeydoo/omarchy-hypr-rdp --enable
+omarchy plugin add https://github.com/mikeydoo/omarchy-rdp --enable
 ```
 
 Then click the remote-desktop icon in the bar and choose **Set up**. A terminal opens and
@@ -55,8 +55,8 @@ Windows can't move between the two sessions (a Wayland window belongs to one com
 - Settings (bar widget settings): *Lock the remote session on its first start* (off: RDP
   already asks for your password) and *Rebuild after aquamarine updates* (on).
 
-Everything the panel does goes through `bin/hypr-rdp-ctl`, which works the same from a
-shell (`hypr-rdp-ctl status`, `hypr-rdp-ctl --help`).
+Everything the panel does goes through `bin/omarchy-rdp-ctl`, which works the same from a
+shell (`omarchy-rdp-ctl status`, `omarchy-rdp-ctl --help`).
 
 ## How it works
 
@@ -103,9 +103,9 @@ entry, which `omarchy plugin add` manages).
 | scripts, `config.toml`, `hyprland-remote.lua` | `~/.config/hypr-rdp/` |
 | `hyprland-remote`, `hypr-rdp-remote`, `rdp-gate` | `~/.config/systemd/user/` |
 | lingering | `loginctl enable-linger` |
-| TCP 3389 from your LAN only (comment `hypr-rdp`) | UFW |
+| TCP 3389 from your LAN only (comment `omarchy-rdp`) | UFW |
 
-Replaced files are backed up to `~/.local/state/omarchy-hypr-rdp/backup-<date>/`.
+Replaced files are backed up to `~/.local/state/omarchy-rdp/backup-<date>/`.
 `config.toml` is only installed when missing, so your edits stay.
 
 ## Requirements and hardware notes
@@ -137,11 +137,11 @@ Replaced files are backed up to `~/.local/state/omarchy-hypr-rdp/backup-<date>/`
 
 ## Uninstall
 
-**Uninstall** in the panel (or `hypr-rdp-ctl uninstall`) removes the services, files and
+**Uninstall** in the panel (or `omarchy-rdp-ctl uninstall`) removes the services, files and
 firewall rule, and backs up `config.toml`. Then:
 
 ```
-omarchy plugin remove mikeydoo.hypr-rdp
+omarchy plugin remove mikeydoo.omarchy-rdp
 sudo loginctl disable-linger "$USER"   # if nothing else needs it
 sudo pacman -R hypr-rdp                # optional
 ```

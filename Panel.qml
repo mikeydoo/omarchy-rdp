@@ -14,8 +14,8 @@ import qs.Ui
 // a hero with the on/off switch, then sections of rows.
 Panel {
   id: root
-  moduleName: "hypr-rdp"
-  ipcTarget: "hypr-rdp"
+  moduleName: "omarchy-rdp"
+  ipcTarget: "omarchy-rdp"
   manageIpc: false
 
   Commons.Translations { id: strings; directory: Qt.resolvedUrl("i18n") }
@@ -100,7 +100,7 @@ Panel {
   }
   property alias service: svc
 
-  // omarchy-shell hypr-rdp toggle — handy for a keybinding.
+  // omarchy-shell omarchy-rdp toggle — handy for a keybinding.
   IpcHandler {
     target: root.ipcTarget
     function open(): void { root.open() }

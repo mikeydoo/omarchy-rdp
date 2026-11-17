@@ -5,6 +5,8 @@
 # Called (in the background) by rdp-gate.py on desk takeover and by on-connect.sh on RDP login.
 #   ask-close-other.sh desk|remote --now   log it out without asking (the plugin's buttons)
 
+HERE=$(cd "$(dirname "$0")" && pwd)
+
 remote_hypr_pid() {
     CG=$(systemctl --user show -p ControlGroup --value hyprland-remote.service)
     [ -n "$CG" ] || return
@@ -21,6 +23,7 @@ remote)
     systemctl --user is-active -q hyprland-remote.service || exit 0
     BUS="unix:path=$XDG_RUNTIME_DIR/bus"   # the desk's session bus
     TITLE="RDP session is still logged in"
+    SHOW_IN=desk
     WHERE="in the RDP session"
     ;;
 desk)
@@ -28,6 +31,7 @@ desk)
     P=$(remote_hypr_pid); [ -n "$P" ] || exit 1
     BUS=$(tr '\0' '\n' < /proc/$P/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
     TITLE="Console session is still logged in"
+    SHOW_IN=remote
     WHERE="on the console"
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
@@ -52,9 +56,22 @@ WHY="Both sessions are you, the same user. Some apps only allow one copy per use
 CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
     -A logout="Log it out" -A keep="Keep it" -A why="Why?" "$TITLE")
 # Why?: the same question again, with the explanation.
+# Opened expanded, so the explanation shows in full without hovering: Omarchy's toasts
+# show two lines until hovered. (Its expand call toggles, so only when not already open.)
 if [ "$CHOICE" = why ]; then
-    CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
-        -A logout="Log it out" -A keep="Keep it" "$TITLE" "$WHY")
+    OUT=$(mktemp)
+    DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
+        -A logout="Log it out" -A keep="Keep it" "$TITLE" "$WHY" > "$OUT" &
+    NOTIFY=$!
+    sleep 1
+    W=$("$HERE/hypr-session.sh" "$SHOW_IN" | awk '{print $2}')
+    if [ -n "$W" ]; then
+        export WAYLAND_DISPLAY="$W" OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+        omarchy-shell notifications probe 2>/dev/null | grep -q '"expanded":true' \
+            || omarchy-shell notifications expand >/dev/null 2>&1
+    fi
+    wait "$NOTIFY"
+    CHOICE=$(cat "$OUT"); rm -f "$OUT"
 fi
 fi
 

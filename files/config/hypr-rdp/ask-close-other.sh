@@ -21,7 +21,6 @@ remote)
     systemctl --user is-active -q hyprland-remote.service || exit 0
     BUS="unix:path=$XDG_RUNTIME_DIR/bus"   # the desk's session bus
     TITLE="RDP session is still logged in"
-    BODY="Its windows are still open. Log it out so apps open here?"
     WHERE="in the RDP session"
     ;;
 desk)
@@ -29,7 +28,6 @@ desk)
     P=$(remote_hypr_pid); [ -n "$P" ] || exit 1
     BUS=$(tr '\0' '\n' < /proc/$P/environ | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
     TITLE="Console session is still logged in"
-    BODY="Its windows are still open. Log it out so apps open here?"
     WHERE="on the console"
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
@@ -52,7 +50,7 @@ sleep 1   # let the shell's toast deck come up too
 WHY="Both sessions are you, the same user, so apps that allow one copy per user (browsers on the same profile, chat and music apps, password managers) can only run in one of them. Any still open there would bring their windows up $WHERE instead of here, or say they're already running. Logging it out closes its apps, so they open where you are."
 
 CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \
-    -A logout="Log it out" -A keep="Keep it" -A why="Why?" "$TITLE" "$BODY")
+    -A logout="Log it out" -A keep="Keep it" -A why="Why?" "$TITLE")
 # Why?: the same question again, with the explanation.
 if [ "$CHOICE" = why ]; then
     CHOICE=$(DBUS_SESSION_BUS_ADDRESS=$BUS notify-send -a "Sessions" -u critical -t 0 \

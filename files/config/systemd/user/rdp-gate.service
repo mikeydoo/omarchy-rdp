@@ -1,0 +1,12 @@
+[Unit]
+Description=RDP gate: listen on 3389, newest login wins between desk and remote session
+After=hyprland-remote.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I %h/.config/hypr-rdp/rdp-gate.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

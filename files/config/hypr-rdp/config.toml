@@ -1,0 +1,23 @@
+# hypr-rdp config — see /usr/share/doc/hypr-rdp/README.md
+bind = "127.0.0.1:3390"  # localhost only; rdp-gate.py listens on 0.0.0.0:3389 and forwards here while the desk is locked
+
+# Log in with your Linux user/password. Needs /etc/pam.d/hypr-rdp (shipped by the package).
+# Client must use TLS security without NLA (FreeRDP: /sec:tls).
+auth_mode = "pam"
+
+fps = 30
+
+# Lossless, full colour, damage-only: sharp text and snappy for desktop work. hypr-rdp's
+# default, avc420, halves colour resolution (washed-out colour, fringes on text) and is
+# software-encoded on NVIDIA. Remove this line for H.264 (lighter for video).
+egfx_codec = "clearcodec"
+
+# No "output": hypr-rdp creates its own headless screen sized to the RDP client and
+# resizes it with the client window. (Needs hypr-rdp 0.1.8+ on Hyprland 0.57+ with Lua
+# config.)
+
+# Newest login wins: a successful RDP login locks the desk; unlocking the desk cuts RDP
+# (rdp-gate.py). The remote session itself isn't locked on disconnect: the RDP login
+# already asks for your Linux password, the same one its lock screen would. Omarchy's own
+# idle lock (idle.lock in ~/.config/omarchy/shell.json) still applies, as stock.
+on_session_start = "@HOME@/.config/hypr-rdp/on-connect.sh"

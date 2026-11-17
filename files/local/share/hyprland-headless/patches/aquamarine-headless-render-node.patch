@@ -1,0 +1,112 @@
+--- a/src/backend/Headless.cpp
++++ b/src/backend/Headless.cpp
+@@ -5,6 +5,7 @@
+ #include <sys/timerfd.h>
+ #include <cstring>
+ #include <unistd.h>
++#include <cstdlib>
+ #include "Shared.hpp"
+ 
+ using namespace Aquamarine;
+@@ -14,6 +15,24 @@
+ 
+ #define TIMESPEC_NSEC_PER_SEC 1000000000LL
+ 
++// Headless-only mode (opt-in): when AQ_HEADLESS_RENDER_NODE names a DRM render node
++// (e.g. /dev/dri/renderD128), the headless backend exposes it as its DRM fd so that
++// CBackend can create a GBM allocator and the compositor can render on the GPU with no
++// DRM/Wayland backend and no seat. Render nodes need no DRM master or logind session.
++// File-static on purpose: keeps CHeadlessBackend's layout (and the library ABI) unchanged.
++static int g_headlessRenderNodeFD = -2; // -2: not opened yet, -1: unset or failed
++
++static int headlessRenderNodeFD() {
++    if (g_headlessRenderNodeFD != -2)
++        return g_headlessRenderNodeFD;
++
++    g_headlessRenderNodeFD = -1;
++    const char* path       = getenv("AQ_HEADLESS_RENDER_NODE");
++    if (path && *path)
++        g_headlessRenderNodeFD = open(path, O_RDWR | O_CLOEXEC);
++    return g_headlessRenderNodeFD;
++}
++
+ Aquamarine::CHeadlessOutput::CHeadlessOutput(const std::string& name_, Hyprutils::Memory::CWeakPointer<CHeadlessBackend> backend_) : backend(backend_) {
+     name = name_;
+ 
+@@ -111,7 +130,10 @@
+ }
+ 
+ Aquamarine::CHeadlessBackend::~CHeadlessBackend() {
+-    ;
++    if (g_headlessRenderNodeFD >= 0) {
++        close(g_headlessRenderNodeFD);
++        g_headlessRenderNodeFD = -2;
++    }
+ }
+ 
+ Aquamarine::CHeadlessBackend::CHeadlessBackend(SP<CBackend> backend_) : backend(backend_) {
+@@ -123,6 +145,13 @@
+ }
+ 
+ bool Aquamarine::CHeadlessBackend::start() {
++    const char* path = getenv("AQ_HEADLESS_RENDER_NODE");
++    if (path && *path) {
++        if (headlessRenderNodeFD() < 0)
++            backend->log(AQ_LOG_ERROR, std::format("headless: failed to open render node {}: {}", path, strerror(errno)));
++        else
++            backend->log(AQ_LOG_DEBUG, std::format("headless: using render node {} (fd {})", path, g_headlessRenderNodeFD));
++    }
+     return true;
+ }
+ 
+@@ -131,11 +160,11 @@
+ }
+ 
+ int Aquamarine::CHeadlessBackend::drmFD() {
+-    return -1;
++    return headlessRenderNodeFD();
+ }
+ 
+ int Aquamarine::CHeadlessBackend::drmRenderNodeFD() {
+-    return -1;
++    return headlessRenderNodeFD();
+ }
+ 
+ bool Aquamarine::CHeadlessBackend::dispatchEvents() {
+@@ -171,6 +200,15 @@
+             return formats;
+     }
+ 
++    // Render-node mode: let the driver pick the layout (implicit modifier). The list below
++    // uses DRM_FORMAT_INVALID (0), which as a modifier means LINEAR, and NVIDIA can't render
++    // to linear buffers, so every allocation would fail there.
++    if (headlessRenderNodeFD() >= 0)
++        return {SDRMFormat{.drmFormat = DRM_FORMAT_XRGB8888, .modifiers = {DRM_FORMAT_MOD_INVALID}},
++                SDRMFormat{.drmFormat = DRM_FORMAT_XBGR8888, .modifiers = {DRM_FORMAT_MOD_INVALID}},
++                SDRMFormat{.drmFormat = DRM_FORMAT_ARGB8888, .modifiers = {DRM_FORMAT_MOD_INVALID}},
++                SDRMFormat{.drmFormat = DRM_FORMAT_ABGR8888, .modifiers = {DRM_FORMAT_MOD_INVALID}}};
++
+     // formats probably supported by EGL
+     return {SDRMFormat{.drmFormat = DRM_FORMAT_XRGB8888, .modifiers = {DRM_FORMAT_INVALID}},
+             SDRMFormat{.drmFormat = DRM_FORMAT_XBGR8888, .modifiers = {DRM_FORMAT_INVALID}},
+--- a/src/allocator/GBM.cpp
++++ b/src/allocator/GBM.cpp
+@@ -6,6 +6,7 @@
+ #include "FormatUtils.hpp"
+ #include "Shared.hpp"
+ #include <xf86drm.h>
++#include <cstdlib>
+ #include <gbm.h>
+ #include <unistd.h>
+ #include "../backend/drm/Renderer.hpp"
+@@ -171,6 +172,10 @@
+     if (explicitModifiers.empty()) {
+         allocator->backend->log(AQ_LOG_WARNING, "GBM: Using modifier-less allocation");
+         bo = gbm_bo_create(allocator->gbmDevice, attrs.size.x, attrs.size.y, attrs.format, flags);
++        // Headless render-node mode: pass on the layout the driver picked. Left as INVALID,
++        // the importer guesses it, and NVIDIA (block-linear) can't render to the result.
++        if (bo && getenv("AQ_HEADLESS_RENDER_NODE"))
++            modifier = gbm_bo_get_modifier(bo);
+     } else {
+         TRACE(allocator->backend->log(AQ_LOG_TRACE, std::format("GBM: Using modifier-based allocation, modifiers: {}", explicitModifiers.size())));
+         for (auto const& mod : explicitModifiers) {

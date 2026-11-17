@@ -1,0 +1,17 @@
+[Unit]
+Description=Headless Hyprland remote session (patched aquamarine, RDP via hypr-rdp)
+
+[Service]
+Type=simple
+# Rebuild the patched libaquamarine first if aquamarine was updated (a quick no-op
+# otherwise). A build takes a minute or two, longer on a slow machine.
+ExecStartPre=%h/.local/share/hyprland-headless/rebuild-if-stale.sh
+TimeoutStartSec=15min
+# Uses the patched libaquamarine next to the launcher via LD_LIBRARY_PATH; the system library is untouched.
+ExecStart=%h/.local/share/hyprland-headless/run-headless-hyprland.sh
+Restart=on-failure
+# Not too eager: at boot the network may not be up yet for a rebuild's download.
+RestartSec=30
+
+[Install]
+WantedBy=default.target

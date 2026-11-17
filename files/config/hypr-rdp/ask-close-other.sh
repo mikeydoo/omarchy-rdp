@@ -6,6 +6,8 @@
 #   ask-close-other.sh desk|remote --now   log it out without asking (the plugin's buttons)
 
 HERE=$(cd "$(dirname "$0")" && pwd)
+# To the journal: journalctl --user -t omarchy-rdp
+log() { logger -t omarchy-rdp -- "ask-close-other $1: $2" 2>/dev/null || true; }
 
 remote_hypr_pid() {
     CG=$(systemctl --user show -p ControlGroup --value hyprland-remote.service)
@@ -41,7 +43,7 @@ else
 # question with Log it out / Keep it / Why? (Why? shows the explanation). Closing the panel
 # keeps the other session.
 W=$("$HERE/hypr-session.sh" "$SHOW_IN" | awk '{print $2}')
-[ -n "$W" ] || exit 1
+[ -n "$W" ] || { log "$1" "no $SHOW_IN session to ask in"; exit 1; }
 export WAYLAND_DISPLAY="$W" OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 
 # A freshly started session (the gate starts the remote one on the RDP login that asks
@@ -54,17 +56,23 @@ done
 WHY="Both sessions are you, the same user, and some apps only allow one copy per user, like browsers on the same profile, chat and music apps and password managers. Any still open there would open their windows $WHERE_SHORT, or say they're already running. Logging it out closes them, so they open where you are."
 ANS="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/rdp-sessions/answer-$$"
 mkdir -p "$(dirname "$ANS")"; rm -f "$ANS"
-omarchy-shell omarchy-rdp ask "$TITLE" "$WHY" "$ANS" >/dev/null 2>&1 || exit 1
+# Right after an RDP login the client resizes the session's screen; let that settle first.
+sleep 2
+if ! omarchy-shell omarchy-rdp ask "$TITLE" "$WHY" "$ANS" >/dev/null 2>&1; then
+    log "$1" "couldn't ask in the $SHOW_IN session"; exit 1
+fi
+log "$1" "asked in the $SHOW_IN session: $TITLE"
 i=0
 while [ ! -e "$ANS" ]; do
     sleep 0.5
     i=$((i + 1))
     # Every few seconds: still asking? (A shell restart in that session loses the question.)
     if [ $((i % 10)) = 0 ] && [ "$(omarchy-shell omarchy-rdp pending 2>/dev/null)" != "$ANS" ]; then
-        [ -e "$ANS" ] || exit 0
+        [ -e "$ANS" ] || { log "$1" "question gone (shell restarted): keeping it"; exit 0; }
     fi
 done
 CHOICE=$(cat "$ANS"); rm -f "$ANS"
+log "$1" "answer: $CHOICE"
 fi
 
 

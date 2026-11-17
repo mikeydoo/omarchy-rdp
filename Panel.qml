@@ -51,9 +51,14 @@ Panel {
   property var question: null
   readonly property bool asking: question !== null
   property bool questionWhy: false
+  // When the question was put up: a close soon after (the session settling right after an
+  // RDP login, its screen resizing) isn't an answer, so the panel opens again instead.
+  property real askedAt: 0
+  property int reopens: 0
 
   function answer(choice) {
     if (!question) return
+    console.info("omarchy-rdp: answer: " + choice)
     var file = String(question.answerFile)
     question = null
     Quickshell.execDetached(["sh", "-c", 'printf "%s" "$1" > "$2.tmp" && mv "$2.tmp" "$2"',
@@ -63,6 +68,12 @@ Panel {
 
   // The "why log out" note: collapsed until clicked (kept while the shell runs).
   property bool noteOpen: false
+
+  Timer {
+    id: reopenQuestion
+    interval: 400
+    onTriggered: if (root.question && !root.opened) root.open()
+  }
 
   property string armed: ""
   function confirmThen(name, action) {
@@ -141,6 +152,9 @@ Panel {
       if (root.question) root.answer("keep")
       root.questionWhy = false
       root.question = { title: title, body: body, answerFile: answerFile }
+      root.askedAt = Date.now()
+      root.reopens = 0
+      console.info("omarchy-rdp: asking: " + title)
       root.open()
       return "ok"
     }
@@ -150,8 +164,16 @@ Panel {
     function why(): void { if (root.question) root.questionWhy = true }
   }
 
-  onOpenedChanged: if (!opened && question) answer("keep")
-  else if (opened) {
+  onOpenedChanged: if (!opened && question) {
+    if (Date.now() - askedAt < 5000 && reopens < 5) {
+      reopens++
+      console.info("omarchy-rdp: question closed while the session settled; showing it again")
+      reopenQuestion.restart()
+    } else {
+      console.info("omarchy-rdp: question closed: keep")
+      answer("keep")
+    }
+  } else if (opened) {
     armed = ""
     panelFlick.contentY = 0
     svc.refresh()

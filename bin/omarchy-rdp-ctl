@@ -15,8 +15,6 @@ from a shell.
   omarchy-rdp-ctl logout-remote       log out the remote session (closes its windows)
   omarchy-rdp-ctl logout-desk         log out the desk session (from the remote session)
   omarchy-rdp-ctl lock-once           lock this remote session, once per start of it
-  omarchy-rdp-ctl mode shared|headless   share the desk session over RDP, or use a separate
-                                      headless session (the default)
 """
 import json
 import os
@@ -33,16 +31,7 @@ MARKERS = os.path.join(RUNTIME, "rdp-sessions")
 OMARCHY_PATH = os.environ.get("OMARCHY_PATH", "/usr/share/omarchy")
 HEADLESS = os.path.join(HOME, ".local/share/hyprland-headless")
 CONF = os.path.join(HOME, ".config/hypr-rdp")
-UNITS = ["hyprland-remote.service", "hypr-rdp-remote.service", "hypr-rdp-shared.service", "rdp-gate.service"]
-HEADLESS_UNITS = ["hyprland-remote.service", "hypr-rdp-remote.service"]
-SHARED_UNIT = "hypr-rdp-shared.service"
-# "shared": RDP shows the desk session itself (hypr-rdp-shared.service). Otherwise (no
-# file): a separate headless session (hyprland-remote.service). rdp-gate.py reads it too.
-MODE_FILE = os.path.join(HOME, ".config/hypr-rdp/mode")
-
-
-def mode():
-    return "shared" if read(MODE_FILE) == "shared" else "headless"
+UNITS = ["hyprland-remote.service", "hypr-rdp-remote.service", "rdp-gate.service"]
 HYPR_RDP_MIN = "0.1.8"
 # Login history, written by on-connect.sh (RDP logins, after authentication) and
 # rdp-gate.py (desk logins): "<epoch>\t<rdp|desk>\t<client address>" per line.
@@ -148,7 +137,7 @@ def files_current():
             if not os.path.exists(dest):
                 installed = current = False
                 continue
-            if rel in ("config/hypr-rdp/config.toml", "config/hypr-rdp/config-shared.toml"):
+            if rel == "config/hypr-rdp/config.toml":
                 continue  # yours to edit
             want = read(src).replace("@HOME@", HOME)
             if read(dest) != want:
@@ -215,10 +204,7 @@ def status():
     check("files", files_installed and files_up_to_date,
           "Files installed and up to date" if files_installed and files_up_to_date else
           "Files out of date" if files_installed else "Files not installed", fix="install")
-    shared = mode() == "shared"
-    if shared:
-        pass  # the patched libaquamarine is only for the headless session
-    elif failed and failed == aq:
+    if failed and failed == aq:
         check("libaquamarine", False,
               f"The patched libaquamarine doesn't build for aquamarine {aq}: the patch needs porting")
     else:
@@ -229,18 +215,13 @@ def status():
           os.path.exists("/etc/pam.d/hypr-rdp") else "/etc/pam.d/hypr-rdp is missing", fix="install")
     linger = run("loginctl", "show-user", os.environ.get("USER", ""), "-p", "Linger", "--value")[1] == "yes"
     check("linger", linger, "Starts at boot (lingering on)" if linger else
-          "Lingering is off: RDP won't be available at boot", fix="install")
-    if shared:
-        sharing = is_enabled(SHARED_UNIT) and is_active(SHARED_UNIT)
-        check("shared", sharing, "Sharing the desk session" if sharing else
-              "Not sharing the desk session (journalctl --user -u hypr-rdp-shared)", fix="mode-shared")
-    else:
-        for u in HEADLESS_UNITS:
-            en = is_enabled(u)
-            check(f"enabled-{u}", en, f"{u} enabled" if en else f"{u} is not enabled", fix="install")
-        failed_unit = run("systemctl", "--user", "is-failed", "hyprland-remote.service")[1] == "failed"
-        check("remote-running", not failed_unit, "Remote session not in a failed state" if not failed_unit else
-              "The remote session failed to start (journalctl --user -u hyprland-remote)", fix="restart-remote")
+          "Lingering is off: the remote session won't start at boot", fix="install")
+    for u in ("hyprland-remote.service", "hypr-rdp-remote.service"):
+        en = is_enabled(u)
+        check(f"enabled-{u}", en, f"{u} enabled" if en else f"{u} is not enabled", fix="install")
+    failed_unit = run("systemctl", "--user", "is-failed", "hyprland-remote.service")[1] == "failed"
+    check("remote-running", not failed_unit, "Remote session not in a failed state" if not failed_unit else
+          "The remote session failed to start (journalctl --user -u hyprland-remote)", fix="restart-remote")
     if rdp_enabled:
         check("rdp-gate", rdp_active, "RDP gate listening on 3389" if rdp_active else
               "RDP gate is enabled but not running", fix="rdp-on")
@@ -260,7 +241,6 @@ def status():
     return {
         "version": json.loads(read(os.path.join(KIT, "manifest.json")) or "{}").get("version", ""),
         "session": session_kind(),
-        "mode": mode(),
         "state": state,
         "setup": setup,
         "rdpEnabled": rdp_enabled,
@@ -334,23 +314,6 @@ def main(argv):
         return systemctl("restart", "hyprland-remote.service")
     if cmd == "logout-remote":
         return systemctl("stop", "hyprland-remote.service")
-    if cmd == "mode" and args[:1] in (["shared"], ["headless"]):
-        os.makedirs(os.path.dirname(MODE_FILE), exist_ok=True)
-        if args[0] == "shared":
-            with open(MODE_FILE, "w") as f:
-                f.write("shared\n")
-            systemctl("disable", "--now", *HEADLESS_UNITS)   # closes the headless session
-            rc = systemctl("enable", "--now", SHARED_UNIT)
-        else:
-            try:
-                os.remove(MODE_FILE)
-            except FileNotFoundError:
-                pass
-            systemctl("disable", "--now", SHARED_UNIT)
-            rc = systemctl("enable", "--now", *HEADLESS_UNITS)
-        if is_active("rdp-gate.service"):
-            systemctl("restart", "rdp-gate.service")
-        return rc
     if cmd == "logout-desk":
         return subprocess.call([os.path.join(CONF, "ask-close-other.sh"), "desk", "--now"])
     if cmd == "lock-once":

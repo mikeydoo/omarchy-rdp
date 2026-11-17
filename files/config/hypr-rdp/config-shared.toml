@@ -1,9 +1,0 @@
-# hypr-rdp config for Omarchy RDP's shared mode ("Share the desk session"): hypr-rdp runs in
-# the desk session and captures its monitor (passed with --output by hypr-rdp-shared.sh).
-# See /usr/share/doc/hypr-rdp/README.md. Yours to edit: the installer won't replace it.
-bind = "127.0.0.1:3390"  # localhost only; rdp-gate.py listens on 0.0.0.0:3389 and forwards here
-auth_mode = "pam"
-fps = 30
-egfx_codec = "clearcodec"
-on_session_start = "@HOME@/.config/hypr-rdp/shared-connect.sh"
-on_session_end = "@HOME@/.config/hypr-rdp/shared-disconnect.sh"

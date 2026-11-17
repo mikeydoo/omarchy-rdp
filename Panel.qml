@@ -94,16 +94,8 @@ Panel {
     return (st.remoteLocked === true ? strings.t("remote.locked") : strings.t("remote.running")) + " · " + waiting
   }
 
-  // Shared mode: RDP shows the desk session itself, so there's no remote session.
-  readonly property bool shared: !!st && st.mode === "shared"
-
   function deskCaption() {
     if (!st) return ""
-    if (shared && st.client) return strings.t("desk.sharedWith").arg(st.client)
-    if (shared && st.deskActive) {
-      var waiting = st.rdpActive ? strings.t("remote.waiting").arg(st.address || "") : strings.t("remote.rdpOff")
-      return (st.deskLocked === true ? strings.t("desk.locked") : strings.t("desk.inUse")) + " · " + waiting
-    }
     if (!st.deskActive) return strings.t("desk.none")
     if (st.deskLocked === true) return strings.t("desk.locked")
     if (st.deskLocked === false) return strings.t("desk.inUse")
@@ -434,7 +426,6 @@ Panel {
             }
 
             SessionRow {
-              visible: !root.shared
               which: "remote"
               glyph: "󰢹"
               title: strings.t("remote.title")
@@ -456,84 +447,13 @@ Panel {
             }
 
             ActionRow {
-              visible: !root.inRemote && !root.shared && !!root.st && root.st.remoteActive
+              visible: !root.inRemote && !!root.st && root.st.remoteActive
               glyph: ""
               label: root.armed === "restart" ? strings.t("confirm") : strings.t("restart")
               labelColor: root.armed === "restart" ? root.urgent : root.foreground
               caption: strings.t("restart.caption")
               hint: svc.busy === "restart-remote" ? strings.t("working") : ""
               onActivated: root.confirmThen("restart", function() { svc.run("restart-remote", ["restart-remote"]) })
-            }
-
-            // Desk only: share the desk session over RDP, or use a separate headless one.
-            Item {
-              id: modeRow
-              visible: !root.inRemote
-              width: parent.width
-              implicitHeight: modeText.implicitHeight + Style.spacing.rowPaddingX
-              readonly property bool leaving: !root.shared && !!root.st && root.st.remoteActive
-
-              RowLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: Style.space(10)
-                anchors.rightMargin: Style.space(10)
-                spacing: Style.space(10)
-
-                Text {
-                  textFormat: Text.PlainText
-                  text: "\udb80\udf79"
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.icon
-                  Layout.alignment: Qt.AlignVCenter
-                  Layout.preferredWidth: Style.font.icon * 1.3
-                  horizontalAlignment: Text.AlignHCenter
-                }
-
-                ColumnLayout {
-                  id: modeText
-                  Layout.fillWidth: true
-                  spacing: Style.space(1)
-
-                  Text {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    text: root.armed === "mode" ? strings.t("mode.confirm") : strings.t("mode.title")
-                    color: root.armed === "mode" ? root.urgent : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    wrapMode: Text.WordWrap
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    Layout.fillWidth: true
-                    text: svc.busy === "mode" ? strings.t("working")
-                        : strings.t(root.shared ? "mode.shared" : "mode.headless")
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    wrapMode: Text.WordWrap
-                  }
-                }
-
-                ToggleSwitch {
-                  id: modeSwitch
-                  Layout.alignment: Qt.AlignVCenter
-                  checked: root.shared
-                  busy: svc.busy === "mode"
-                  foreground: root.foreground
-                  onToggled: {
-                    var target = checked ? "headless" : "shared"
-                    var go = function() { svc.run("mode", ["mode", target]) }
-                    // Leaving headless mode closes the remote session: click twice.
-                    if (target === "shared" && modeRow.leaving) root.confirmThen("mode", go)
-                    else go()
-                  }
-                }
-              }
             }
           }
 
@@ -583,14 +503,14 @@ Panel {
             }
           }
 
-          // --- why log out the other session (separate sessions only) ---------------------
+          // --- why log out the other session ---------------------------------------------
           PanelSeparator {
-            visible: root.isSetUp && !root.shared
+            visible: root.isSetUp
             foreground: root.foreground
           }
 
           RowLayout {
-            visible: root.isSetUp && !root.shared
+            visible: root.isSetUp
             width: parent.width
             spacing: Style.space(10)
 

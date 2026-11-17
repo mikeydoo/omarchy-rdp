@@ -1,6 +1,6 @@
-# omarchy-hypr-rdp
+# Omarchy RDP
 
-An Omarchy plugin for a second, **headless** Hyprland session you reach over RDP, separate
+An Omarchy plugin (`omarchy-hypr-rdp`) for a second, **headless** Hyprland session you reach over RDP, separate
 from the session at the desk: same user, same Omarchy config, its own windows. One of the
 two is in use at a time; the newest login wins. Set it up, check it and manage it from the
 bar.

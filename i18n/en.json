@@ -1,5 +1,5 @@
 {
-  "title": "Remote Session",
+  "title": "Omarchy RDP",
   "state.not-set-up": "Not set up",
   "state.attention": "Needs attention",
   "state.connected": "Connected",
@@ -44,5 +44,5 @@
   "notify.rebuilt.title": "Remote session updated",
   "notify.rebuilt.body": "The patched libaquamarine was rebuilt for the aquamarine update. Restart the remote session from the bar to use it.",
   "notify.rebuildFailed.title": "Remote session needs attention",
-  "notify.rebuildFailed.body": "The patched libaquamarine didn't build after the aquamarine update. Open the Remote Session panel for details."
+  "notify.rebuildFailed.body": "The patched libaquamarine didn't build after the aquamarine update. Open the Omarchy RDP panel for details."
 }

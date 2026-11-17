@@ -7,7 +7,7 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// Remote Session bar widget: the icon shows the state at a glance; the panel sets the
+// Omarchy RDP bar widget: the icon shows the state at a glance; the panel sets the
 // remote session up, shows who's connected and how to connect, lists what needs fixing,
 // and has the controls. The same widget runs in both sessions and shows the controls
 // that make sense where it is. Laid out like Omarchy's own panels (Tailscale, Dropbox):

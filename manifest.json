@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "mikeydoo.hypr-rdp",
-  "name": "Remote Session (RDP)",
+  "name": "Omarchy RDP",
   "version": "0.1.0",
   "author": "mikeydoo",
   "license": "MIT",
@@ -13,7 +13,7 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Remote Session",
+    "displayName": "Omarchy RDP",
     "description": "Status of the RDP remote session, who's connected, checks with fixes, and controls.",
     "category": "Network",
     "allowMultiple": false,

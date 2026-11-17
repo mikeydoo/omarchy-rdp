@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// State and actions for the Remote Session panel. Everything goes through
+// State and actions for the Omarchy RDP panel. Everything goes through
 // bin/hypr-rdp-ctl; this only polls its status and runs its commands.
 Item {
   id: root

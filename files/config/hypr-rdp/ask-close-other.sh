@@ -23,14 +23,14 @@ remote)
     systemctl --user is-active -q hyprland-remote.service || exit 0
     TITLE="RDP session is still logged in"
     SHOW_IN=desk
-    WHERE_SHORT="in the RDP session instead of here"
+    WHERE_SHORT="In the RDP session instead of here"
     ;;
 desk)
     S=$(desk_session); [ -n "$S" ] || exit 0
     P=$(remote_hypr_pid); [ -n "$P" ] || exit 1
     TITLE="Console session is still logged in"
     SHOW_IN=remote
-    WHERE_SHORT="on the console instead of here"
+    WHERE_SHORT="On the console instead of here"
     ;;
 *) echo "usage: $0 remote|desk" >&2; exit 2 ;;
 esac
@@ -58,16 +58,15 @@ LOGOUT=$(row "$(printf '\uf08b')" "Log it out" "Closes its windows, so apps open
 KEEP=$(row "$(printf '\uf00c')" "Keep it" "Leaves its windows open")
 WHYROW=$(row "$(printf '\uf059')" "Why?" "Some apps only allow one copy per user")
 ask() { omarchy-menu-select "$@" -- --width 560 2>/dev/null | cut -d"$TAB" -f1; }
+ask_wide() { omarchy-menu-select "$@" -- --width 900 2>/dev/null | cut -d"$TAB" -f1; }
 
 CHOICE=$(ask "$TITLE" "$LOGOUT" "$KEEP" "$WHYROW")
 # Why?: the explanation, then the same choice again (picking an explanation row shows it
 # again; dismissing the menu keeps the other session).
 while [ -n "$CHOICE" ] && [ "$CHOICE" != "Log it out" ] && [ "$CHOICE" != "Keep it" ]; do
-    CHOICE=$(ask "Why log it out?" \
-        "$(row "$(printf '\uf007')" "Both sessions are you, the same user" "Some apps only allow one copy per user")" \
-        "$(row "$(printf '\uf2d2')" "Like browsers, chat and music apps" "and password managers: one session at a time")" \
-        "$(row "$(printf '\uf2d0')" "Any still open there open their windows there" "$WHERE_SHORT, or say they're already running")" \
-        "$(row "$(printf '\uf0e2')" "Logging it out closes its apps" "so they open where you are")" \
+    CHOICE=$(ask_wide "Why log it out?" \
+        "$(row "$(printf '\uf007')" "Both sessions are you, the same user, and some apps only allow one copy per user" "Like browsers on the same profile, chat and music apps and password managers: one session at a time")" \
+        "$(row "$(printf '\uf2d0')" "Any still open there would open their windows there" "$WHERE_SHORT, or say they're already running")" \
         "$LOGOUT" "$KEEP")
 done
 case "$CHOICE" in
